@@ -21,9 +21,84 @@ extern "C" {
     pub fn mkPRIMSXP(offset : i32, eval : i32) -> libR_sys::SEXP;
 }*/
 
+struct RContext {
+    protect_count: usize,
+}
+
+impl Default for RContext {
+    fn default() -> Self {
+        Self { protect_count: 0 }
+    }
+}
+
+impl Drop for RContext {
+    fn drop(&mut self) {
+        self.unprotect();
+    }
+}
+
+impl RContext {
+    pub fn protect(&mut self, sexp: libR_sys::SEXP) -> libR_sys::SEXP {
+        self.protect_count += 1;
+        unsafe { libR_sys::Rf_protect(sexp) }
+    }
+
+    pub fn unprotect(&mut self) {
+        unsafe { libR_sys::Rf_unprotect(self.protect_count as i32) }
+        self.protect_count = 0;
+    }
+}
+
+trait IntoSexp {
+    fn into_sexp(&self, context: &mut RContext) -> libR_sys::SEXP;
+}
+
+impl IntoSexp for f64 {
+    fn into_sexp(&self, context: &mut RContext) -> libR_sys::SEXP {
+        context.protect(unsafe { libR_sys::Rf_ScalarReal(*self) })
+    }
+}
+
+impl IntoSexp for libR_sys::SEXP {
+    fn into_sexp(&self, _: &mut RContext) -> libR_sys::SEXP {
+        self.clone()
+    }
+}
+
+fn create_call(name: &str, args: &[&dyn IntoSexp]) -> libR_sys::SEXP {
+    let mut context = RContext::default();
+    let sym =
+        unsafe { libR_sys::Rf_install((name.to_string() + "\0").as_ptr() as *mut raw::c_char) };
+    let sym = context.protect(sym);
+    let args: Vec<libR_sys::SEXP> = args.iter().map(|x| x.into_sexp(&mut context)).collect();
+
+    let nilval = unsafe { libR_sys::R_NilValue };
+    let mut args_list = nilval;
+    for arg in args.into_iter().rev() {
+        let tmp = context.protect(unsafe { libR_sys::Rf_allocSExp(libR_sys::LISTSXP) });
+        unsafe {
+            libR_sys::SETCAR(tmp, arg);
+            libR_sys::SET_TAG(tmp, nilval);
+            libR_sys::SETCDR(tmp, args_list);
+        }
+        args_list = tmp;
+    }
+
+    let lang = context.protect(unsafe { libR_sys::Rf_allocSExp(libR_sys::LANGSXP) });
+    unsafe {
+        libR_sys::SETCAR(lang, sym);
+        libR_sys::SET_TAG(lang, nilval);
+        libR_sys::SETCDR(lang, args_list);
+    }
+    lang
+}
+
+fn call(name: &str, args: &[&dyn IntoSexp]) -> libR_sys::SEXP {
+    let call = create_call(name, args);
+    unsafe { libR_sys::Rf_eval(call, libR_sys::R_GlobalEnv) }
+}
 
 fn main() {
-
     unsafe {
         std::env::set_var("R_HOME", "/usr/lib/R");
         let arg0 = "R\0".as_ptr() as *mut raw::c_char;
@@ -31,38 +106,18 @@ fn main() {
         R_CStackLimit = usize::max_value();
         setup_Rmainloop();
 
-        // install searches the symbol table and returns symbol
-        // if the symbol is not found then it creates some default
-        // non special/builtin symbol
-        // R_SymbolTable is hash table of SEXPs
-        let sym_value = libR_sys::Rf_install("cos\0".as_ptr() as *mut raw::c_char);
+        let cos_sq = call("^", &[&call("cos", &[&1.0]), &2.0]);
+        let sin_sq = call("^", &[&call("sin", &[&1.0]), &2.0]);
 
-        // Nil value is singleton
-        let nil_value = libR_sys::R_NilValue;
-        
-        let input_sexpr = libR_sys::Rf_protect(libR_sys::Rf_ScalarReal(1.0));
-        let inputlist_sexpr = libR_sys::Rf_protect(libR_sys::Rf_allocSExp(libR_sys::LISTSXP));
+        println!(
+            "{} + {} = {}",
+            *libR_sys::REAL(cos_sq),
+            *libR_sys::REAL(sin_sq),
+            *libR_sys::REAL(call("+", &[&cos_sq, &sin_sq]))
+        );
 
-        libR_sys::SETCAR(inputlist_sexpr, input_sexpr);
-        libR_sys::SET_TAG(inputlist_sexpr, nil_value);
-        libR_sys::SETCDR(inputlist_sexpr, nil_value);
-
-        let lang_sexpr = libR_sys::Rf_protect(libR_sys::Rf_allocSExp(libR_sys::LANGSXP));
-
-        libR_sys::SETCAR(lang_sexpr, sym_value);
-        libR_sys::SET_TAG(lang_sexpr, nil_value);
-        libR_sys::SETCDR(lang_sexpr, inputlist_sexpr);
-
-        // current expression is needed when you use the 
-        // findFun function but eval function sets it
-        //libR_sys::R_CurrentExpression = lang_sexpr;
-
-        let res = libR_sys::Rf_eval(lang_sexpr, libR_sys::R_GlobalEnv);
-        println!("{}", *libR_sys::REAL(res));
-
-        // number in unprotect is the number of pointers
-        // that are protected that you want unprotect
-        libR_sys::Rf_unprotect(3);
-
+        println!("{}", *libR_sys::LOGICAL(call("is.R", &[])));
+        println!("{}", *libR_sys::LOGICAL(call("==", &[&1.0, &2.0])));
+        println!("{}", *libR_sys::LOGICAL(call("==", &[&1.0, &1.0])));
     }
 }
