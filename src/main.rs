@@ -65,6 +65,14 @@ impl IntoSexp for libR_sys::SEXP {
     }
 }
 
+impl IntoSexp for &str {
+    fn into_sexp(&self, context: &mut RContext) -> libR_sys::SEXP {
+        context.protect(unsafe {
+            libR_sys::Rf_mkString((self.to_string() + "\0").as_ptr() as *mut raw::c_char)
+        })
+    }
+}
+
 fn create_call(name: &str, args: &[&dyn IntoSexp]) -> libR_sys::SEXP {
     let mut context = RContext::default();
     let sym =
@@ -98,6 +106,10 @@ fn call(name: &str, args: &[&dyn IntoSexp]) -> libR_sys::SEXP {
     unsafe { libR_sys::Rf_eval(call, libR_sys::R_GlobalEnv) }
 }
 
+fn get_sym(name : &str) -> libR_sys::SEXP {
+        unsafe { libR_sys::Rf_install((name.to_string() + "\0").as_ptr() as *mut raw::c_char) }
+}
+
 fn main() {
     unsafe {
         std::env::set_var("R_HOME", "/usr/lib/R");
@@ -119,5 +131,13 @@ fn main() {
         println!("{}", *libR_sys::LOGICAL(call("is.R", &[])));
         println!("{}", *libR_sys::LOGICAL(call("==", &[&1.0, &2.0])));
         println!("{}", *libR_sys::LOGICAL(call("==", &[&1.0, &1.0])));
+
+        call("<-", &[&get_sym("x"), &2.1]);
+
+        let fd = call("file", &[&"sexp.dat"]);
+        call("open", &[&fd]);
+        let data = call("unserialize", &[&fd]);
+        let res = libR_sys::Rf_eval(data, libR_sys::R_GlobalEnv);
+        println!("{}", *libR_sys::REAL(res));
     }
 }
