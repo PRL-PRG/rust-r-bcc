@@ -1,5 +1,5 @@
-mod sexphelpers;
 mod server;
+mod sexphelpers;
 
 use libR_sys::setup_Rmainloop;
 use libR_sys::R_CStackLimit;
@@ -57,4 +57,6 @@ fn main() {
         let res = libR_sys::Rf_eval(data, libR_sys::R_GlobalEnv);
         println!("{}", *libR_sys::REAL(res));
     }
+
+    server::run();
 }

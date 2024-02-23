@@ -10,18 +10,22 @@ createEnv <- function(env) {
     res
 }
 
-cmpfuncon <- function(f, incon, outcon, options=NULL) {
+cmpfuncon <- function(f, con, options=NULL) {
     e <- createEnv(environment(f));
-    data <- list(e, options);
-    serialize(data, incon);
-    flush(incon);
-    unserialize(outcon)
+    #e <- new.env();
+    data <- list(f, e);
+    serialize(e, con);
+    write('\n', con);
+    print("sent");
+    flush(con);
+    unserialize(con)
 }
 
 cmpfun <- function(f, options=NULL) {
-    incon <- socketConnection(1337, blocking=TRUE);
-    outcon <- socketConnection(1338, blocking=TRUE);
-    cmpfuncon(f, incon, outcon, options)
+    con <- socketConnection(port=1337, blocking=FALSE, open="a+");
+    res <- cmpfuncon(f, con, options);
+    close(con);
+    res
 }
 
 f <- function(x) {
@@ -30,4 +34,4 @@ f <- function(x) {
 
 f(2);
 fc <- cmpfun(f)
-fc(2)
+fc
