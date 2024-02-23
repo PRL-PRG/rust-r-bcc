@@ -7,6 +7,7 @@ createEnv <- function(env) {
         tmp <- parent.env(tmp)
         env <- parent.env(env);
     }
+    parent.env(tmp) <- emptyenv();
     res
 }
 

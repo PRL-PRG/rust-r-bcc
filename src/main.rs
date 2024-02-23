@@ -36,7 +36,23 @@ fn main() {
         let data = call("unserialize", &[&fd]);
         call("close", &[&fd]);
 
-        let fd = call("file", &[&"envfn.dat"]);
+        //let fd = call("file", &[&"envfn.dat"]);
+        //call("open", &[&fd]);
+        //let env = call("unserialize", &[&fd]);
+        //call("close", &[&fd]);
+
+        //let res = libR_sys::Rf_eval(data, env);
+        //println!("{}", *libR_sys::REAL(res));
+
+        //let fd = call("file", &[&"envlist.dat"]);
+        //call("open", &[&fd]);
+        //let env = call("unserialize", &[&fd]);
+        //call("close", &[&fd]);
+
+        //let res = libR_sys::Rf_eval(data, env);
+        //println!("{}", *libR_sys::REAL(res));
+
+        let fd = call("file", &[&"envwhole.dat"]);
         call("open", &[&fd]);
         let env = call("unserialize", &[&fd]);
         call("close", &[&fd]);
@@ -44,19 +60,11 @@ fn main() {
         let res = libR_sys::Rf_eval(data, env);
         println!("{}", *libR_sys::REAL(res));
 
-        let fd = call("file", &[&"envlist.dat"]);
-        call("open", &[&fd]);
-        let env = call("unserialize", &[&fd]);
-        call("close", &[&fd]);
-
-        let res = libR_sys::Rf_eval(data, env);
-        println!("{}", *libR_sys::REAL(res));
-
-        call("<-", &[&get_sym("x"), &2.1]);
-
-        let res = libR_sys::Rf_eval(data, libR_sys::R_GlobalEnv);
-        println!("{}", *libR_sys::REAL(res));
+        //call("<-", &[&get_sym("x"), &2.1]);
+        
+        //let res = libR_sys::Rf_eval(data, libR_sys::R_GlobalEnv);
+        //println!("{}", *libR_sys::REAL(res));
     }
 
-    server::run();
+    //server::run();
 }
