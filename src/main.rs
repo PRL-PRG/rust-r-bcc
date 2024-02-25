@@ -1,5 +1,7 @@
 mod server;
 mod sexphelpers;
+mod sexp;
+mod rds;
 
 use libR_sys::setup_Rmainloop;
 use libR_sys::R_CStackLimit;
