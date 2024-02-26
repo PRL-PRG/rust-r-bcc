@@ -2,6 +2,7 @@ use std::io::BufReader;
 
 use std::io::Read;
 
+use crate::sexp::data;
 use crate::sexp::Sexp;
 use crate::sexp::SexpKind;
 
@@ -29,6 +30,7 @@ pub struct RDSHeader {
     format_version: i32,
 }
 
+#[allow(dead_code)]
 mod sexptype {
     pub const NILSXP: u8 = 0; /* nil = NULL */
     pub const SYMSXP: u8 = 1; /* symbols */
@@ -86,6 +88,8 @@ mod sexptype {
 pub struct Flag {
     sexp_type: u8,
     level: i32,
+    has_attributes: bool,
+    has_tag: bool,
 }
 
 pub trait RDSReader: Read {
@@ -162,11 +166,20 @@ pub trait RDSReader: Read {
 
     fn read_item(&mut self) -> Result<Sexp, RDSReaderError> {
         let flag = self.read_flags()?;
+        self.read_item_flags(flag)
+    }
+
+    fn read_item_flags(&mut self, flag: Flag) -> Result<Sexp, RDSReaderError> {
         match flag.sexp_type {
-            sexptype::NILVALUE_SXP => Ok(SexpKind::Nil.into()),
+            sexptype::NILVALUE_SXP | sexptype::NILSXP => Ok(SexpKind::Nil.into()),
             sexptype::REALSXP => self.read_realsxp(),
             sexptype::INTSXP => self.read_intsxp(),
-            _ => todo!(),
+            sexptype::LISTSXP => self.read_listsxp(flag),
+            sexptype::VECSXP => self.read_vecsxp(),
+            x => {
+                println!("{x}");
+                todo!()
+            },
         }
     }
 
@@ -174,9 +187,15 @@ pub trait RDSReader: Read {
         let flag = self.read_int()?;
         let sexp_type: u8 = (flag & 255) as u8;
         let level: i32 = flag >> 12;
-        //let has_arguments = todo!();
+        let has_attributes = (flag & (1 << 9)) != 0;
+        let has_tag = (flag & (1 << 10)) != 0;
 
-        Ok(Flag { sexp_type, level })
+        Ok(Flag {
+            sexp_type,
+            level,
+            has_attributes,
+            has_tag,
+        })
     }
 
     fn read_len(&mut self) -> Result<usize, RDSReaderError> {
@@ -227,6 +246,46 @@ pub trait RDSReader: Read {
 
         Ok(SexpKind::Int(data).into())
     }
+
+    fn read_vecsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let len = self.read_len()?;
+
+        let mut data = vec![];
+        data.reserve(len);
+
+        for _ in 0..len {
+            data.push(self.read_item()?)
+        }
+
+        Ok(SexpKind::Vec(data).into())
+    }
+
+    fn read_listsxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
+        // read in order attrib tag and value
+        // only value is mandatory
+
+        let mut data = vec![];
+
+        loop {
+            if flags.has_attributes {
+                todo!()
+            }
+
+            if flags.has_tag {
+                todo!()
+            }
+
+            let value = self.read_item()?;
+            data.push(value.into());
+
+            let flags = self.read_flags()?;
+            if flags.sexp_type != sexptype::LISTSXP {
+                let last = self.read_item_flags(flags)?;
+                data.push(last.into());
+                return Ok(SexpKind::List(data).into());
+            }
+        }
+    }
 }
 
 impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
@@ -235,7 +294,7 @@ impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
 mod tests {
     use std::io::Cursor;
 
-    use crate::sexp::{data, SexpKind};
+    use crate::sexp::SexpKind;
 
     use super::*;
 
@@ -291,7 +350,7 @@ mod tests {
 
         assert_eq!(
             res,
-            SexpKind::List(vec![
+            SexpKind::Vec(vec![
                 SexpKind::Real(vec![1.0]).into(),
                 SexpKind::Real(vec![2.0]).into(),
             ])

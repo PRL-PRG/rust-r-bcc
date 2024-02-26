@@ -101,4 +101,5 @@ pub enum SexpKind {
     Int(Vec<i32>),
     Complex(Vec<data::Complex>),
     Str(Vec<Rc<str>>),
+    Vec(Vec<Sexp>),
 }
