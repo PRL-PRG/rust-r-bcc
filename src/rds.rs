@@ -3,6 +3,7 @@ use std::io::BufReader;
 use std::io::Read;
 
 use crate::sexp::data;
+use crate::sexp::lang;
 use crate::sexp::Sexp;
 use crate::sexp::SexpKind;
 
@@ -85,6 +86,7 @@ mod sexptype {
     pub const BASEENV_SXP: u8 = 241;
 }
 
+#[derive(Clone, Copy)]
 pub struct Flag {
     sexp_type: u8,
     level: i32,
@@ -170,17 +172,26 @@ pub trait RDSReader: Read {
     }
 
     fn read_item_flags(&mut self, flag: Flag) -> Result<Sexp, RDSReaderError> {
-        match flag.sexp_type {
-            sexptype::NILVALUE_SXP | sexptype::NILSXP => Ok(SexpKind::Nil.into()),
-            sexptype::REALSXP => self.read_realsxp(),
-            sexptype::INTSXP => self.read_intsxp(),
-            sexptype::LISTSXP => self.read_listsxp(flag),
-            sexptype::VECSXP => self.read_vecsxp(),
+        let mut sexp: Sexp = match flag.sexp_type {
+            sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
+            sexptype::REALSXP => self.read_realsxp()?,
+            sexptype::INTSXP => self.read_intsxp()?,
+            sexptype::LISTSXP => self.read_listsxp(flag.clone())?,
+            sexptype::VECSXP => self.read_vecsxp()?,
+            sexptype::SYMSXP => self.read_symsxp()?,
+            sexptype::STRSXP => self.read_strsxp()?,
+            sexptype::CHARSXP => self.read_charsxp()?,
             x => {
                 println!("{x}");
                 todo!()
-            },
+            }
+        };
+
+        if flag.has_attributes {
+            sexp.set_attr(self.read_item()?);
         }
+
+        Ok(sexp)
     }
 
     fn read_flags(&mut self) -> Result<Flag, RDSReaderError> {
@@ -264,27 +275,89 @@ pub trait RDSReader: Read {
         // read in order attrib tag and value
         // only value is mandatory
 
+        let mut flags = flags;
         let mut data = vec![];
 
         loop {
-            if flags.has_attributes {
-                todo!()
+            let attr = if flags.has_attributes {
+                Some(self.read_item()?)
+            } else {
+                None
+            };
+
+            let tag = if flags.has_tag {
+                Some(self.read_item()?)
+            } else {
+                None
+            };
+
+            let mut value = self.read_item()?;
+            if let Some(attr) = attr {
+                value.set_attr(attr);
             }
 
-            if flags.has_tag {
-                todo!()
+            if let Some(Sexp {
+                kind: SexpKind::Sym(tag),
+                ..
+            }) = tag
+            {
+                data.push(data::TaggedSexp::new_with_tag(value.into(), tag.data));
             }
 
-            let value = self.read_item()?;
-            data.push(value.into());
-
-            let flags = self.read_flags()?;
+            flags = self.read_flags()?;
             if flags.sexp_type != sexptype::LISTSXP {
                 let last = self.read_item_flags(flags)?;
                 data.push(last.into());
                 return Ok(SexpKind::List(data).into());
             }
         }
+    }
+
+    fn read_symsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let _ = self.read_flags()?;
+        let print_name = self.read_charsxp()?;
+        if let SexpKind::Char(chars) = print_name.kind {
+            println!("{:?}", chars.len());
+            return Ok(SexpKind::Sym(lang::Sym::new(String::from_utf8(
+                chars.iter().map(|x| *x as u8).collect(),
+            )?))
+            .into());
+        }
+        unreachable!()
+    }
+
+    fn read_charsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let len = self.read_int()? as usize;
+
+        let mut data = vec![];
+        data.reserve(len);
+
+        for _ in 0..len {
+            data.push(self.read_byte()? as char);
+        }
+
+        Ok(SexpKind::Char(data).into())
+    }
+
+    fn read_strsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let len = self.read_len()?;
+        let mut data = vec![];
+        data.reserve(len);
+
+        for _ in 0..len {
+            let item = self.read_item()?;
+            if let Sexp {
+                kind: SexpKind::Char(chars),
+                ..
+            } = item
+            {
+                data.push(String::from_utf8(chars.iter().map(|x| *x as u8).collect())?);
+            } else {
+                unreachable!()
+            }
+        }
+
+        Ok(SexpKind::Str(data).into())
     }
 }
 
@@ -335,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list() {
+    fn test_vecsxp() {
         let data: Vec<u8> = vec![
             0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
             0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x13, 0x00,
@@ -355,6 +428,28 @@ mod tests {
                 SexpKind::Real(vec![2.0]).into(),
             ])
             .into()
+        )
+    }
+
+    #[test]
+    fn test_list_tag() {
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x02, 0x13, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x01, 0x3f, 0xf0, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x05, 0x6e, 0x61, 0x6d, 0x65, 0x73, 0x00, 0x00,
+            0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01,
+            0x61, 0x00, 0x00, 0x00, 0xfe,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
+
+        assert_eq!(
+            res.kind,
+            SexpKind::Vec(vec![SexpKind::Real(vec![1.0]).into(),]).into()
         )
     }
 }

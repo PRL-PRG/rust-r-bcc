@@ -6,11 +6,13 @@ pub struct Loc {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct MetaData;
+pub struct MetaData {
+    attr: Option<Box<Sexp>>,
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Sexp {
-    kind: SexpKind,
+    pub kind: SexpKind,
     metadata: MetaData,
 }
 
@@ -18,8 +20,14 @@ impl From<SexpKind> for Sexp {
     fn from(kind: SexpKind) -> Self {
         Sexp {
             kind,
-            metadata: MetaData,
+            metadata: MetaData { attr: None },
         }
+    }
+}
+
+impl Sexp {
+    pub fn set_attr(&mut self, attr: Sexp) {
+        self.metadata.attr = Some(Box::new(attr))
     }
 }
 
@@ -32,13 +40,18 @@ pub mod data {
     pub struct TaggedSexp {
         // if this will be imutable then
         // Rc will be better for coping
-        tag: Option<Rc<str>>,
+        tag: Option<String>,
         data: Sexp,
     }
 
     impl TaggedSexp {
         pub fn new(data: Sexp) -> Self {
             Self { tag: None, data }
+        }
+
+        pub fn new_with_tag(data: Sexp, tag: String) -> Self {
+            let tag = Some(tag);
+            Self { tag, data }
         }
     }
 
@@ -68,7 +81,15 @@ pub mod lang {
 
     #[derive(Debug, PartialEq)]
     pub struct Sym {
-        data: Rc<str>,
+        pub data: String,
+    }
+
+
+
+    impl Sym {
+        pub fn new(data: String) -> Self {
+            Self { data }
+        }
     }
 
     #[derive(Debug, PartialEq)]
@@ -100,6 +121,6 @@ pub enum SexpKind {
     Real(Vec<f64>),
     Int(Vec<i32>),
     Complex(Vec<data::Complex>),
-    Str(Vec<Rc<str>>),
+    Str(Vec<String>),
     Vec(Vec<Sexp>),
 }
