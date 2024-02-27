@@ -85,7 +85,6 @@ pub fn call(name: &str, args: &[&dyn IntoSexp]) -> libR_sys::SEXP {
     unsafe { libR_sys::Rf_eval(call, libR_sys::R_GlobalEnv) }
 }
 
-pub fn get_sym(name : &str) -> libR_sys::SEXP {
-        unsafe { libR_sys::Rf_install((name.to_string() + "\0").as_ptr() as *mut raw::c_char) }
+pub fn get_sym(name: &str) -> libR_sys::SEXP {
+    unsafe { libR_sys::Rf_install((name.to_string() + "\0").as_ptr() as *mut raw::c_char) }
 }
-
