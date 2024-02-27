@@ -181,6 +181,7 @@ pub trait RDSReader: Read {
             sexptype::SYMSXP => self.read_symsxp()?,
             sexptype::STRSXP => self.read_strsxp()?,
             sexptype::CHARSXP => self.read_charsxp()?,
+            sexptype::LANGSXP => self.read_langsxp(flag.clone())?,
             x => {
                 println!("{x}");
                 todo!()
@@ -302,6 +303,8 @@ pub trait RDSReader: Read {
             }) = tag
             {
                 data.push(data::TaggedSexp::new_with_tag(value.into(), tag.data));
+            } else {
+                data.push(value.into());
             }
 
             flags = self.read_flags()?;
@@ -358,6 +361,41 @@ pub trait RDSReader: Read {
 
         Ok(SexpKind::Str(data).into())
     }
+
+    fn read_langsxp(&mut self, flag: Flag) -> Result<Sexp, RDSReaderError> {
+        let target = self.read_item()?;
+
+        if flag.has_attributes {
+            todo!()
+        }
+
+        if flag.has_tag {
+            todo!()
+        }
+
+        let args = self.read_item()?;
+
+        let args = match args.kind {
+            SexpKind::List(list) => list,
+            _ => {
+                return Err(RDSReaderError::DataError(
+                    "Args need to be list".to_string(),
+                ))
+            }
+        };
+
+        let target = match target.kind {
+            SexpKind::Sym(sym) => lang::Target::Sym(sym),
+            SexpKind::Lang(lang) => lang::Target::Lang(Box::new(lang)),
+            _ => {
+                return Err(RDSReaderError::DataError(
+                    "Target needs to be either symbol or lang".to_string(),
+                ))
+            }
+        };
+
+        Ok(SexpKind::Lang(lang::Lang::new(target, args)).into())
+    }
 }
 
 impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
@@ -392,7 +430,7 @@ mod tests {
         let res = reader.read_rds().unwrap();
 
         assert_eq!(res, SexpKind::Real(vec![1.0]).into());
-        
+
         // c(1, 2)
         let data: Vec<u8> = vec![
             0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
@@ -482,5 +520,32 @@ mod tests {
             ])
             .into()
         );
+    }
+
+    #[test]
+    fn test_langsxp() {
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x06, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01, 0x66, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01,
+            0x78, 0x00, 0x00, 0x00, 0xfe,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
+
+        assert_eq!(
+            res,
+            SexpKind::Lang(lang::Lang::new(
+                lang::Target::Sym(lang::Sym::new("f".into())),
+                vec![
+                    SexpKind::Sym(lang::Sym::new("x".into())).into(),
+                    SexpKind::Nil.into()
+                ]
+            ))
+            .into()
+        )
     }
 }

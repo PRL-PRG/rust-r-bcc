@@ -84,8 +84,6 @@ pub mod lang {
         pub data: String,
     }
 
-
-
     impl Sym {
         pub fn new(data: String) -> Self {
             Self { data }
@@ -93,12 +91,21 @@ pub mod lang {
     }
 
     #[derive(Debug, PartialEq)]
-    pub enum Target {}
+    pub enum Target {
+        Lang(Box<Lang>), // expression
+        Sym(Sym),        // named
+    }
 
     #[derive(Debug, PartialEq)]
     pub struct Lang {
         target: Target,
         args: super::data::List,
+    }
+
+    impl Lang {
+        pub fn new(target: Target, args: super::data::List) -> Self {
+            Self { target, args }
+        }
     }
 }
 
