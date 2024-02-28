@@ -14,8 +14,8 @@ impl Display for SexpKind {
             SexpKind::Sym(sym) => write!(f, "{}", sym.data),
             SexpKind::List(_) => todo!(),
             SexpKind::Nil => todo!(),
-            SexpKind::Closure => todo!(),
-            SexpKind::Environment => todo!(),
+            SexpKind::Closure(_) => todo!(),
+            SexpKind::Environment(_) => todo!(),
             SexpKind::Promise => todo!(),
             SexpKind::Lang(lang) => todo!(),
             SexpKind::Char(_) => todo!(),
@@ -25,6 +25,7 @@ impl Display for SexpKind {
             SexpKind::Complex(_) => todo!(),
             SexpKind::Str(_) => todo!(),
             SexpKind::Vec(_) => todo!(),
+            SexpKind::MissingArg => todo!(),
         }
     }
 }

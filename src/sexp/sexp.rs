@@ -100,6 +100,30 @@ pub mod lang {
             Self { target, args }
         }
     }
+
+    #[derive(Debug, PartialEq)]
+    pub struct Closure {
+        formals: super::data::List,
+        body: Lang,
+        environment: Environment,
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub enum Environment {
+        Global,
+        Base,
+        Nil,
+        Normal(NormalEnv),
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub struct NormalEnv;
+
+    impl Into<super::SexpKind> for Environment {
+        fn into(self) -> super::SexpKind {
+            super::SexpKind::Environment(self)
+        }
+    }
 }
 
 // SXP
@@ -110,8 +134,8 @@ pub enum SexpKind {
     Nil,
 
     // language contructs
-    Closure,
-    Environment,
+    Closure(lang::Closure),
+    Environment(lang::Environment),
     Promise,
     Lang(lang::Lang),
 
@@ -123,4 +147,6 @@ pub enum SexpKind {
     Complex(Vec<data::Complex>),
     Str(Vec<String>),
     Vec(Vec<Sexp>),
+
+    MissingArg,
 }

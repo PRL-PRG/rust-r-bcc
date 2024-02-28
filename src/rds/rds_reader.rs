@@ -176,12 +176,20 @@ pub trait RDSReader: Read {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
             sexptype::INTSXP => self.read_intsxp()?,
-            sexptype::LISTSXP => self.read_listsxp(flag.clone())?,
+            sexptype::LISTSXP => self.read_listsxp(flag)?,
             sexptype::VECSXP => self.read_vecsxp()?,
             sexptype::SYMSXP => self.read_symsxp()?,
             sexptype::STRSXP => self.read_strsxp()?,
             sexptype::CHARSXP => self.read_charsxp()?,
-            sexptype::LANGSXP => self.read_langsxp(flag.clone())?,
+            sexptype::LANGSXP => self.read_langsxp(flag)?,
+            sexptype::CLOSXP => self.read_closxp(flag)?,
+            sexptype::ENVSXP => self.read_envsxp()?,
+            sexptype::GLOBALENV_SXP => {
+                let tmp: SexpKind = lang::Environment::Global.into();
+                tmp.into()
+            }
+            sexptype::MISSINGARG_SXP => SexpKind::MissingArg.into(),
+            sexptype::REFSXP => self.read_refsxp(flag)?,
             x => {
                 println!("{x}");
                 todo!()
@@ -401,6 +409,28 @@ pub trait RDSReader: Read {
 
         Ok(SexpKind::Lang(lang::Lang::new(target, args)).into())
     }
+
+    fn read_closxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
+        // order of the values : [attr], enviroment, formals, body
+        if flags.has_attributes {
+            todo!()
+        }
+        let environment = self.read_item()?;
+        println!("done env");
+        let formals = self.read_item()?;
+        println!("done formals");
+        let body = self.read_item()?;
+        println!("done body");
+        todo!()
+    }
+
+    fn read_envsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        todo!()
+    }
+
+    fn read_refsxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
+        todo!()
+    }
 }
 
 impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
@@ -408,7 +438,6 @@ impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-
 
     use crate::sexp::sexp::{lang, SexpKind};
 
@@ -608,5 +637,21 @@ mod tests {
             ))
             .into()
         );
+    }
+
+    #[test]
+    fn test_closxp() {
+        // function(x) x
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x04, 0x03, 0x00,
+            0x00, 0x00, 0xfd, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00,
+            0x09, 0x00, 0x00, 0x00, 0x01, 0x78, 0x00, 0x00, 0x00, 0xfb, 0x00, 0x00, 0x00, 0xfe,
+            0x00, 0x00, 0x01, 0xff,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
     }
 }
