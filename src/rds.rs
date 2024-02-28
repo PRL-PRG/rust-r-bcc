@@ -381,10 +381,11 @@ pub trait RDSReader: Read {
 
         let args = match args.kind {
             SexpKind::List(list) => list,
-            _ => {
-                return Err(RDSReaderError::DataError(
-                    "Args need to be list".to_string(),
-                ))
+            SexpKind::Nil => vec![],
+            x => {
+                return Err(RDSReaderError::DataError(format!(
+                    "Args need to be list got {x:?}"
+                )))
             }
         };
 
