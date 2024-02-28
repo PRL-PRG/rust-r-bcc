@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use super::sexp::Sexp;
 
-struct Bc {
+pub struct Bc {
     instructions: Vec<BcInstr>,
     constpool: Vec<Sexp>,
 }
