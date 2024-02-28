@@ -2,10 +2,10 @@ use std::io::BufReader;
 
 use std::io::Read;
 
-use crate::sexp::data;
-use crate::sexp::lang;
-use crate::sexp::Sexp;
-use crate::sexp::SexpKind;
+use crate::sexp::sexp::data;
+use crate::sexp::sexp::lang;
+use crate::sexp::sexp::Sexp;
+use crate::sexp::sexp::SexpKind;
 
 #[derive(Debug)]
 pub enum RDSReaderError {
@@ -409,7 +409,8 @@ impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
 mod tests {
     use std::io::Cursor;
 
-    use crate::sexp::SexpKind;
+
+    use crate::sexp::sexp::{lang, SexpKind};
 
     use super::*;
 

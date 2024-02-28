@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 pub struct Loc {
     row: usize,
     col: usize,
@@ -32,16 +30,12 @@ impl Sexp {
 }
 
 pub mod data {
-    use std::rc::Rc;
-
     use super::{Sexp, SexpKind};
 
     #[derive(Debug, PartialEq)]
     pub struct TaggedSexp {
-        // if this will be imutable then
-        // Rc will be better for coping
-        tag: Option<String>,
-        data: Sexp,
+        pub tag: Option<String>,
+        pub data: Sexp,
     }
 
     impl TaggedSexp {
@@ -77,11 +71,10 @@ pub mod data {
 }
 
 pub mod lang {
-    use std::rc::Rc;
 
     #[derive(Debug, PartialEq)]
     pub struct Sym {
-        pub data: String,
+        pub(crate) data: String,
     }
 
     impl Sym {
@@ -98,8 +91,8 @@ pub mod lang {
 
     #[derive(Debug, PartialEq)]
     pub struct Lang {
-        target: Target,
-        args: super::data::List,
+        pub(in crate::sexp) target: Target,
+        pub(in crate::sexp) args: super::data::List,
     }
 
     impl Lang {

@@ -1,6 +1,6 @@
 use std::{env, fs::File};
 
-use rds::{RDSReader, RDSReaderError};
+use rds::rds_reader::{RDSReader, RDSReaderError};
 
 mod compiler;
 mod rds;
@@ -36,7 +36,7 @@ fn main() -> Result<(), MainError> {
     }
     let mut file = File::open(args[1].as_str())?;
     let sexp = file.read_rds()?;
-
+    
     println!("{sexp:?}");
 
     Ok(())
