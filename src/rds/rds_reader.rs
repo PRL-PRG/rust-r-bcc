@@ -92,6 +92,28 @@ pub struct Flag {
     level: i32,
     has_attributes: bool,
     has_tag: bool,
+    orig: i32,
+}
+
+#[derive(Default)]
+pub struct RefsTable {
+    data: Vec<Sexp>,
+}
+
+impl RefsTable {
+    fn add_ref(&mut self, data: Sexp) {
+        self.data.push(data);
+    }
+
+    fn get_ref(&mut self, index: i32) -> Result<Sexp, RDSReaderError> {
+        if index < 0 || index > self.data.len() as i32 {
+            Err(RDSReaderError::DataError(format!(
+                "Wrong ref index {index}"
+            )))
+        } else {
+            Ok(self.data[index as usize].clone())
+        }
+    }
 }
 
 pub trait RDSReader: Read {
@@ -134,8 +156,8 @@ pub trait RDSReader: Read {
 
     fn read_rds(&mut self) -> Result<Sexp, RDSReaderError> {
         let _ = self.read_header()?;
-
-        let item = self.read_item()?;
+        let mut refs = RefsTable::default();
+        let item = self.read_item(&mut refs)?;
 
         Ok(item)
     }
@@ -166,30 +188,34 @@ pub trait RDSReader: Read {
         }
     }
 
-    fn read_item(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_item(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
         let flag = self.read_flags()?;
-        self.read_item_flags(flag)
+        self.read_item_flags(refs, flag)
     }
 
-    fn read_item_flags(&mut self, flag: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_item_flags(
+        &mut self,
+        refs: &mut RefsTable,
+        flag: Flag,
+    ) -> Result<Sexp, RDSReaderError> {
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
             sexptype::INTSXP => self.read_intsxp()?,
-            sexptype::LISTSXP => self.read_listsxp(flag)?,
-            sexptype::VECSXP => self.read_vecsxp()?,
-            sexptype::SYMSXP => self.read_symsxp()?,
-            sexptype::STRSXP => self.read_strsxp()?,
+            sexptype::LISTSXP => self.read_listsxp(refs, flag)?,
+            sexptype::VECSXP => self.read_vecsxp(refs)?,
+            sexptype::SYMSXP => self.read_symsxp(refs)?,
+            sexptype::STRSXP => self.read_strsxp(refs)?,
             sexptype::CHARSXP => self.read_charsxp()?,
-            sexptype::LANGSXP => self.read_langsxp(flag)?,
-            sexptype::CLOSXP => self.read_closxp(flag)?,
+            sexptype::LANGSXP => self.read_langsxp(refs, flag)?,
+            sexptype::CLOSXP => self.read_closxp(refs, flag)?,
             sexptype::ENVSXP => self.read_envsxp()?,
             sexptype::GLOBALENV_SXP => {
                 let tmp: SexpKind = lang::Environment::Global.into();
                 tmp.into()
             }
             sexptype::MISSINGARG_SXP => SexpKind::MissingArg.into(),
-            sexptype::REFSXP => self.read_refsxp(flag)?,
+            sexptype::REFSXP => self.read_refsxp(refs, flag)?,
             x => {
                 println!("{x}");
                 todo!()
@@ -197,7 +223,7 @@ pub trait RDSReader: Read {
         };
 
         if flag.has_attributes {
-            sexp.set_attr(self.read_item()?);
+            sexp.set_attr(self.read_item(refs)?);
         }
 
         Ok(sexp)
@@ -215,6 +241,7 @@ pub trait RDSReader: Read {
             level,
             has_attributes,
             has_tag,
+            orig: flag,
         })
     }
 
@@ -267,20 +294,20 @@ pub trait RDSReader: Read {
         Ok(SexpKind::Int(data).into())
     }
 
-    fn read_vecsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_vecsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
         let mut data = vec![];
         data.reserve(len);
 
         for _ in 0..len {
-            data.push(self.read_item()?)
+            data.push(self.read_item(refs)?)
         }
 
         Ok(SexpKind::Vec(data).into())
     }
 
-    fn read_listsxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_listsxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
         // read in order attrib tag and value
         // only value is mandatory
 
@@ -289,18 +316,18 @@ pub trait RDSReader: Read {
 
         loop {
             let attr = if flags.has_attributes {
-                Some(self.read_item()?)
+                Some(self.read_item(refs)?)
             } else {
                 None
             };
 
             let tag = if flags.has_tag {
-                Some(self.read_item()?)
+                Some(self.read_item(refs)?)
             } else {
                 None
             };
 
-            let mut value = self.read_item()?;
+            let mut value = self.read_item(refs)?;
             if let Some(attr) = attr {
                 value.set_attr(attr);
             }
@@ -317,21 +344,27 @@ pub trait RDSReader: Read {
 
             flags = self.read_flags()?;
             if flags.sexp_type != sexptype::LISTSXP {
-                let last = self.read_item_flags(flags)?;
-                data.push(last.into());
+                let last = self.read_item_flags(refs, flags)?;
+                match &last.kind {
+                    SexpKind::Nil => (),
+                    _ => data.push(last.into()),
+                }
                 return Ok(SexpKind::List(data).into());
             }
         }
     }
 
-    fn read_symsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_symsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
         let _ = self.read_flags()?;
         let print_name = self.read_charsxp()?;
         if let SexpKind::Char(chars) = print_name.kind {
-            return Ok(SexpKind::Sym(lang::Sym::new(String::from_utf8(
+            let res: Sexp = SexpKind::Sym(lang::Sym::new(String::from_utf8(
                 chars.iter().map(|x| *x as u8).collect(),
             )?))
-            .into());
+            .into();
+
+            refs.add_ref(res.clone());
+            return Ok(res);
         }
         Err(RDSReaderError::DataError(
             "Symsxp must be created from charsxp".into(),
@@ -351,13 +384,13 @@ pub trait RDSReader: Read {
         Ok(SexpKind::Char(data).into())
     }
 
-    fn read_strsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_strsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
         let len = self.read_len()?;
         let mut data = vec![];
         data.reserve(len);
 
         for _ in 0..len {
-            let item = self.read_item()?;
+            let item = self.read_item(refs)?;
             if let Sexp {
                 kind: SexpKind::Char(chars),
                 ..
@@ -374,8 +407,8 @@ pub trait RDSReader: Read {
         Ok(SexpKind::Str(data).into())
     }
 
-    fn read_langsxp(&mut self, flag: Flag) -> Result<Sexp, RDSReaderError> {
-        let target = self.read_item()?;
+    fn read_langsxp(&mut self, refs: &mut RefsTable, flag: Flag) -> Result<Sexp, RDSReaderError> {
+        let target = self.read_item(refs)?;
 
         if flag.has_attributes {
             todo!()
@@ -385,7 +418,7 @@ pub trait RDSReader: Read {
             todo!()
         }
 
-        let args = self.read_item()?;
+        let args = self.read_item(refs)?;
 
         let args = match args.kind {
             SexpKind::List(list) => list,
@@ -410,26 +443,41 @@ pub trait RDSReader: Read {
         Ok(SexpKind::Lang(lang::Lang::new(target, args)).into())
     }
 
-    fn read_closxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_closxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
         // order of the values : [attr], enviroment, formals, body
         if flags.has_attributes {
             todo!()
         }
-        let environment = self.read_item()?;
+        let environment = self.read_item(refs)?;
         println!("done env");
-        let formals = self.read_item()?;
+        let formals = self.read_item(refs)?;
         println!("done formals");
-        let body = self.read_item()?;
+        let body = self.read_item(refs)?;
         println!("done body");
-        todo!()
+
+        match (environment.kind, formals.kind, body.kind) {
+            (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Lang(body)) => {
+                Ok(SexpKind::Closure(lang::Closure::new_lang(formals, body, environment)).into())
+            }
+            (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Sym(body)) => {
+                Ok(SexpKind::Closure(lang::Closure::new_sym(formals, body, environment)).into())
+            }
+            x => {
+                println!("{x:?}");
+                todo!()
+            }
+        }
     }
 
     fn read_envsxp(&mut self) -> Result<Sexp, RDSReaderError> {
         todo!()
     }
 
-    fn read_refsxp(&mut self, flags: Flag) -> Result<Sexp, RDSReaderError> {
-        todo!()
+    fn read_refsxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
+        let index = flags.orig >> 8;
+        let index = if index == 0 { self.read_int()? } else { index } - 1;
+
+        refs.get_ref(index)
     }
 }
 
@@ -576,10 +624,7 @@ mod tests {
             res,
             SexpKind::Lang(lang::Lang::new(
                 lang::Target::Sym(lang::Sym::new("f".into())),
-                vec![
-                    SexpKind::Sym(lang::Sym::new("x".into())).into(),
-                    SexpKind::Nil.into()
-                ]
+                vec![SexpKind::Sym(lang::Sym::new("x".into())).into(),]
             ))
             .into()
         );
@@ -605,7 +650,6 @@ mod tests {
                 vec![
                     SexpKind::Sym(lang::Sym::new("x".into())).into(),
                     SexpKind::Real(vec![1.0]).into(),
-                    SexpKind::Nil.into()
                 ]
             ))
             .into()
@@ -631,9 +675,9 @@ mod tests {
             SexpKind::Lang(lang::Lang::new(
                 lang::Target::Lang(Box::new(lang::Lang::new(
                     lang::Target::Sym(lang::Sym::new("hello".into())),
-                    vec![SexpKind::Real(vec![1.0]).into(), SexpKind::Nil.into()]
+                    vec![SexpKind::Real(vec![1.0]).into()]
                 ))),
-                vec![SexpKind::Real(vec![2.0]).into(), SexpKind::Nil.into()]
+                vec![SexpKind::Real(vec![2.0]).into()]
             ))
             .into()
         );
@@ -653,5 +697,19 @@ mod tests {
         let data = Cursor::new(data);
         let mut reader = BufReader::new(data);
         let res = reader.read_rds().unwrap();
+
+        let formals = vec![data::TaggedSexp {
+            tag: Some("x".to_string()),
+            data: SexpKind::MissingArg.into(),
+        }];
+        assert_eq!(
+            res,
+            SexpKind::Closure(lang::Closure::new_sym(
+                formals,
+                lang::Sym::new("x".to_string()),
+                lang::Environment::Global
+            ))
+            .into()
+        );
     }
 }

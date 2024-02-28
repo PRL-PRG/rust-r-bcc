@@ -3,12 +3,12 @@ pub struct Loc {
     col: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MetaData {
     attr: Option<Box<Sexp>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Sexp {
     pub kind: SexpKind,
     metadata: MetaData,
@@ -32,7 +32,7 @@ impl Sexp {
 pub mod data {
     use super::{Sexp, SexpKind};
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct TaggedSexp {
         pub tag: Option<String>,
         pub data: Sexp,
@@ -61,7 +61,7 @@ pub mod data {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Complex {
         real: f64,
         imaginary: f64,
@@ -72,7 +72,7 @@ pub mod data {
 
 pub mod lang {
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Sym {
         pub(crate) data: String,
     }
@@ -83,13 +83,13 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub enum Target {
         Lang(Box<Lang>), // expression
         Sym(Sym),        // named
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Lang {
         pub(in crate::sexp) target: Target,
         pub(in crate::sexp) args: super::data::List,
@@ -101,14 +101,32 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Closure {
         formals: super::data::List,
-        body: Lang,
+        body: Target,
         environment: Environment,
     }
 
-    #[derive(Debug, PartialEq)]
+    impl Closure {
+        pub fn new_lang(formals: super::data::List, body: Lang, environment: Environment) -> Self {
+            Self {
+                formals,
+                body: Target::Lang(Box::new(body)),
+                environment,
+            }
+        }
+
+        pub fn new_sym(formals: super::data::List, body: Sym, environment: Environment) -> Self {
+            Self {
+                formals,
+                body: Target::Sym(body),
+                environment,
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Clone)]
     pub enum Environment {
         Global,
         Base,
@@ -116,7 +134,7 @@ pub mod lang {
         Normal(NormalEnv),
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct NormalEnv;
 
     impl Into<super::SexpKind> for Environment {
@@ -127,7 +145,7 @@ pub mod lang {
 }
 
 // SXP
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SexpKind {
     Sym(lang::Sym),
     List(data::List),
