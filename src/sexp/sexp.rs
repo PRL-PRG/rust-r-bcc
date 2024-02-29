@@ -102,14 +102,42 @@ pub mod lang {
     }
 
     #[derive(Debug, PartialEq, Clone)]
+    pub struct Formal {
+        name: Sym,
+        value: Box<super::Sexp>,
+    }
+
+    impl Formal {
+        pub fn new(name: Sym, value: super::Sexp) -> Self {
+            Self {
+                name,
+                value: Box::new(value),
+            }
+        }
+    }
+
+    impl TryInto<Formal> for super::data::TaggedSexp {
+        type Error = crate::rds::rds_reader::RDSReaderError;
+
+        fn try_into(self) -> Result<Formal, Self::Error> {
+            match self.tag {
+                Some(name) => Ok(Formal::new(Sym::new(name), self.data)),
+                None => Err(crate::rds::rds_reader::RDSReaderError::DataError(
+                    "Formal must have name as a tag".to_string(),
+                )),
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Closure {
-        formals: super::data::List,
+        formals: Vec<Formal>,
         body: Target,
         environment: Environment,
     }
 
     impl Closure {
-        pub fn new_lang(formals: super::data::List, body: Lang, environment: Environment) -> Self {
+        pub fn new_lang(formals: Vec<Formal>, body: Lang, environment: Environment) -> Self {
             Self {
                 formals,
                 body: Target::Lang(Box::new(body)),
@@ -117,7 +145,7 @@ pub mod lang {
             }
         }
 
-        pub fn new_sym(formals: super::data::List, body: Sym, environment: Environment) -> Self {
+        pub fn new_sym(formals: Vec<Formal>, body: Sym, environment: Environment) -> Self {
             Self {
                 formals,
                 body: Target::Sym(body),

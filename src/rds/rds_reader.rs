@@ -449,18 +449,23 @@ pub trait RDSReader: Read {
             todo!()
         }
         let environment = self.read_item(refs)?;
-        println!("done env");
         let formals = self.read_item(refs)?;
-        println!("done formals");
         let body = self.read_item(refs)?;
-        println!("done body");
 
         match (environment.kind, formals.kind, body.kind) {
             (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Lang(body)) => {
-                Ok(SexpKind::Closure(lang::Closure::new_lang(formals, body, environment)).into())
+                let formals: Result<Vec<_>, _> = formals
+                    .into_iter()
+                    .map(|x| x.try_into())
+                    .collect();
+                Ok(SexpKind::Closure(lang::Closure::new_lang(formals?, body, environment)).into())
             }
             (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Sym(body)) => {
-                Ok(SexpKind::Closure(lang::Closure::new_sym(formals, body, environment)).into())
+                let formals: Result<Vec<_>, _> = formals
+                    .into_iter()
+                    .map(|x| x.try_into())
+                    .collect();
+                Ok(SexpKind::Closure(lang::Closure::new_sym(formals?, body, environment)).into())
             }
             x => {
                 println!("{x:?}");
@@ -527,6 +532,22 @@ mod tests {
         let res = reader.read_rds().unwrap();
 
         assert_eq!(res, SexpKind::Real(vec![1.0, 2.0]).into());
+    }
+
+    #[test]
+    fn test_intsxp() {
+        // as.integer(c(1, 2))
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x0d, 0x00,
+            0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
+
+        assert_eq!(res, SexpKind::Int(vec![1, 2]).into());
     }
 
     #[test]
@@ -698,10 +719,10 @@ mod tests {
         let mut reader = BufReader::new(data);
         let res = reader.read_rds().unwrap();
 
-        let formals = vec![data::TaggedSexp {
-            tag: Some("x".to_string()),
-            data: SexpKind::MissingArg.into(),
-        }];
+        let formals = vec![lang::Formal::new(
+            lang::Sym::new("x".to_string()),
+            SexpKind::MissingArg.into(),
+        )];
         assert_eq!(
             res,
             SexpKind::Closure(lang::Closure::new_sym(
