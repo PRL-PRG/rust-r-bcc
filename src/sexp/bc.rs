@@ -2,9 +2,31 @@ use std::ops::{Deref, DerefMut};
 
 use super::sexp::Sexp;
 
+pub struct ConstantPoolIdx(usize);
+
 pub struct Bc {
     instructions: Vec<BcInstr>,
     constpool: Vec<Sexp>,
+}
+
+pub enum BcInstr {
+    Single(BcOp),
+    CPIdx(BcOp, ConstantPoolIdx),
+}
+
+impl From<BcOp> for BcInstr {
+    fn from(value: BcOp) -> Self {
+        Self::Single(value)
+    }
+}
+
+impl Into<u8> for BcInstr {
+    fn into(self) -> u8 {
+        match self {
+            BcInstr::Single(x) => x as u8,
+            BcInstr::CPIdx(_, _) => todo!(),
+        }
+    }
 }
 
 // allowed no camel case types to have same
@@ -13,7 +35,7 @@ pub struct Bc {
 #[allow(non_camel_case_types)]
 #[allow(unused)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-enum BcInstr {
+pub enum BcOp {
     BCMISMATCH_OP,
     RETURN_OP,
     GOTO_OP,
@@ -148,9 +170,9 @@ enum BcInstr {
 
 // TODO you could implement this with proc macro
 // but this should work for now
-impl From<u8> for BcInstr {
+impl From<u8> for BcOp {
     fn from(value: u8) -> Self {
-        if value <= BcInstr::OPCOUNT as u8 {
+        if value <= BcOp::OPCOUNT as u8 {
             unsafe { std::mem::transmute(value) }
         } else {
             panic!()
@@ -165,7 +187,7 @@ mod tests {
     // this is done as sanity check
     #[test]
     fn test_correct_bc_instr_vals() {
-        use BcInstr::*;
+        use BcOp::*;
         let all_instrs_ordered = vec![
             BCMISMATCH_OP,
             RETURN_OP,
