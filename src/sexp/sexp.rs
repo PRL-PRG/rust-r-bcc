@@ -83,6 +83,14 @@ pub mod lang {
         }
     }
 
+    impl From<&str> for Sym {
+        fn from(value: &str) -> Self {
+            Sym {
+                data: value.to_string(),
+            }
+        }
+    }
+
     #[derive(Debug, PartialEq, Clone)]
     pub enum Target {
         Lang(Box<Lang>), // expression

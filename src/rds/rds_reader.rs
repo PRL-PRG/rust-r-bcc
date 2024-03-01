@@ -86,7 +86,7 @@ mod sexptype {
     pub const BASEENV_SXP: u8 = 241;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Flag {
     sexp_type: u8,
     level: i32,
@@ -454,17 +454,13 @@ pub trait RDSReader: Read {
 
         match (environment.kind, formals.kind, body.kind) {
             (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Lang(body)) => {
-                let formals: Result<Vec<_>, _> = formals
-                    .into_iter()
-                    .map(|x| x.try_into())
-                    .collect();
+                let formals: Result<Vec<_>, _> =
+                    formals.into_iter().map(|x| x.try_into()).collect();
                 Ok(SexpKind::Closure(lang::Closure::new_lang(formals?, body, environment)).into())
             }
             (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Sym(body)) => {
-                let formals: Result<Vec<_>, _> = formals
-                    .into_iter()
-                    .map(|x| x.try_into())
-                    .collect();
+                let formals: Result<Vec<_>, _> =
+                    formals.into_iter().map(|x| x.try_into()).collect();
                 Ok(SexpKind::Closure(lang::Closure::new_sym(formals?, body, environment)).into())
             }
             x => {
@@ -702,6 +698,33 @@ mod tests {
             ))
             .into()
         );
+
+        // substitute(x + y)
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x06, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01, 0x2b, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01,
+            0x78, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00,
+            0x00, 0x00, 0x01, 0x79, 0x00, 0x00, 0x00, 0xfe,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
+
+        assert_eq!(
+            res,
+            SexpKind::Lang(lang::Lang::new(
+                lang::Target::Sym(lang::Sym::new("+".into())),
+                vec![
+                    SexpKind::Sym(lang::Sym::new("x".into())).into(),
+                    SexpKind::Sym(lang::Sym::new("y".into())).into(),
+                ]
+            ))
+            .into()
+        );
+
     }
 
     #[test]
@@ -728,6 +751,43 @@ mod tests {
             SexpKind::Closure(lang::Closure::new_sym(
                 formals,
                 lang::Sym::new("x".to_string()),
+                lang::Environment::Global
+            ))
+            .into()
+        );
+
+        // function(x, y) x + y
+        let data: Vec<u8> = vec![
+            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x04, 0x03, 0x00,
+            0x00, 0x00, 0xfd, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00,
+            0x09, 0x00, 0x00, 0x00, 0x01, 0x78, 0x00, 0x00, 0x00, 0xfb, 0x00, 0x00, 0x04, 0x02,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01, 0x79, 0x00,
+            0x00, 0x00, 0xfb, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01, 0x2b, 0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x01, 0xff, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x02, 0xff, 0x00, 0x00,
+            0x00, 0xfe,
+        ];
+
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let res = reader.read_rds().unwrap();
+
+        let formals = vec![
+            lang::Formal::new(lang::Sym::new("x".to_string()), SexpKind::MissingArg.into()),
+            lang::Formal::new(lang::Sym::new("y".to_string()), SexpKind::MissingArg.into()),
+        ];
+        assert_eq!(
+            res,
+            SexpKind::Closure(lang::Closure::new_lang(
+                formals,
+                lang::Lang::new(
+                    lang::Target::Sym(lang::Sym::new("+".into())),
+                    vec![
+                        SexpKind::Sym("x".into()).into(),
+                        SexpKind::Sym("y".into()).into()
+                    ]
+                ),
                 lang::Environment::Global
             ))
             .into()
