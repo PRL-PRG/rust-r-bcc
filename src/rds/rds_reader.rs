@@ -127,6 +127,7 @@ pub trait RDSReader: Read {
         let mut buf: [u8; 4] = [0; 4];
         let len = self.read(&mut buf)?;
         if len != 4 {
+            panic!();
             return Err(RDSReaderError::DataError("Cannot read int".to_string()));
         }
         Ok(i32::from_be_bytes(buf))
@@ -343,6 +344,7 @@ pub trait RDSReader: Read {
             }
 
             flags = self.read_flags()?;
+            println!("{flags:?}");
             if flags.sexp_type != sexptype::LISTSXP {
                 let last = self.read_item_flags(refs, flags)?;
                 match &last.kind {
