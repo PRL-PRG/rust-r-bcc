@@ -2,6 +2,8 @@ use std::{env, fs::File};
 
 use rds::rds_reader::{RDSReader, RDSReaderError};
 
+use crate::compiler::compiler::Compiler;
+
 mod compiler;
 mod rds;
 mod server;
@@ -38,6 +40,15 @@ fn main() -> Result<(), MainError> {
     let sexp = file.read_rds()?;
     
     println!("{sexp:?}");
+
+    let compiler = Compiler::new();
+    match sexp.kind {
+        sexp::sexp::SexpKind::Closure(cl) => {
+            let bc = compiler.cmpfun(cl);
+            println!("{bc:?}");
+        },
+        _ => todo!(),
+    };
 
     Ok(())
 }

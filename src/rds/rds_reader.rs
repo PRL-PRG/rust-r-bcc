@@ -454,16 +454,14 @@ pub trait RDSReader: Read {
         let formals = self.read_item(refs)?;
         let body = self.read_item(refs)?;
 
-        match (environment.kind, formals.kind, body.kind) {
-            (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Lang(body)) => {
+        match (environment.kind, formals.kind) {
+            (SexpKind::Environment(environment), SexpKind::List(formals)) => {
                 let formals: Result<Vec<_>, _> =
                     formals.into_iter().map(|x| x.try_into()).collect();
-                Ok(SexpKind::Closure(lang::Closure::new_lang(formals?, body, environment)).into())
+                Ok(SexpKind::Closure(lang::Closure::new(formals?, body, environment)).into())
             }
-            (SexpKind::Environment(environment), SexpKind::List(formals), SexpKind::Sym(body)) => {
-                let formals: Result<Vec<_>, _> =
-                    formals.into_iter().map(|x| x.try_into()).collect();
-                Ok(SexpKind::Closure(lang::Closure::new_sym(formals?, body, environment)).into())
+            (SexpKind::Environment(environment), SexpKind::Nil) => {
+                Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
             }
             x => {
                 println!("{x:?}");
@@ -749,9 +747,9 @@ mod tests {
         )];
         assert_eq!(
             res,
-            SexpKind::Closure(lang::Closure::new_sym(
+            SexpKind::Closure(lang::Closure::new(
                 formals,
-                lang::Sym::new("x".to_string()),
+                lang::Sym::new("x".to_string()).into(),
                 lang::Environment::Global
             ))
             .into()
@@ -780,7 +778,7 @@ mod tests {
         ];
         assert_eq!(
             res,
-            SexpKind::Closure(lang::Closure::new_lang(
+            SexpKind::Closure(lang::Closure::new(
                 formals,
                 lang::Lang::new(
                     lang::Target::Sym(lang::Sym::new("+".into())),
@@ -788,7 +786,8 @@ mod tests {
                         SexpKind::Sym("x".into()).into(),
                         SexpKind::Sym("y".into()).into()
                     ]
-                ),
+                )
+                .into(),
                 lang::Environment::Global
             ))
             .into()

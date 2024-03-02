@@ -91,16 +91,37 @@ pub mod lang {
         }
     }
 
+    impl Into<super::Sexp> for Sym {
+        fn into(self) -> super::Sexp {
+            super::SexpKind::Sym(self).into()
+        }
+    }
+
     #[derive(Debug, PartialEq, Clone)]
     pub enum Target {
         Lang(Box<Lang>), // expression
         Sym(Sym),        // named
     }
 
+    impl Into<super::Sexp> for Target {
+        fn into(self) -> super::Sexp {
+            match self {
+                Target::Lang(x) => super::SexpKind::Lang(*x).into(),
+                Target::Sym(x) => super::SexpKind::Sym(x).into(),
+            }
+        }
+    }
+
     #[derive(Debug, PartialEq, Clone)]
     pub struct Lang {
         pub(in crate::sexp) target: Target,
         pub(in crate::sexp) args: super::data::List,
+    }
+
+    impl Into<super::Sexp> for Lang {
+        fn into(self) -> super::Sexp {
+            super::SexpKind::Lang(self).into()
+        }
     }
 
     impl Lang {
@@ -140,23 +161,15 @@ pub mod lang {
     #[derive(Debug, PartialEq, Clone)]
     pub struct Closure {
         formals: Vec<Formal>,
-        body: Target,
+        pub(crate) body: Box<super::Sexp>,
         environment: Environment,
     }
 
     impl Closure {
-        pub fn new_lang(formals: Vec<Formal>, body: Lang, environment: Environment) -> Self {
+        pub fn new(formals: Vec<Formal>, body: super::Sexp, environment: Environment) -> Self {
             Self {
                 formals,
-                body: Target::Lang(Box::new(body)),
-                environment,
-            }
-        }
-
-        pub fn new_sym(formals: Vec<Formal>, body: Sym, environment: Environment) -> Self {
-            Self {
-                formals,
-                body: Target::Sym(body),
+                body: Box::new(body),
                 environment,
             }
         }
