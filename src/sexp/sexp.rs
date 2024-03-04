@@ -1,3 +1,5 @@
+use super::bc::Bc;
+
 pub struct Loc {
     row: usize,
     col: usize,
@@ -205,6 +207,7 @@ pub enum SexpKind {
     Environment(lang::Environment),
     Promise,
     Lang(lang::Lang),
+    Bc(Bc),
 
     // vecs
     Char(Vec<char>),

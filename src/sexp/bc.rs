@@ -2,7 +2,7 @@ use super::sexp::Sexp;
 
 pub struct ConstantPoolIdx(usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bc {
     instructions: Vec<i32>,
     constpool: Vec<Sexp>,
@@ -13,6 +13,13 @@ impl Bc {
         Self {
             instructions: vec![Bc::version()],
             constpool: vec![],
+        }
+    }
+
+    pub fn new_init(instructions: Vec<i32>, constpool: Vec<Sexp>) -> Self {
+        Self {
+            instructions,
+            constpool,
         }
     }
 
