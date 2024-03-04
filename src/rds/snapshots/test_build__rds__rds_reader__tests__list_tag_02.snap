@@ -1,0 +1,70 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Vec(
+        [
+            Sexp {
+                kind: Real(
+                    [
+                        1.0,
+                    ],
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            Sexp {
+                kind: Real(
+                    [
+                        2.0,
+                    ],
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            Sexp {
+                kind: Real(
+                    [
+                        1.0,
+                    ],
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+        ],
+    ),
+    metadata: MetaData {
+        attr: Some(
+            Sexp {
+                kind: List(
+                    [
+                        TaggedSexp {
+                            tag: Some(
+                                "names",
+                            ),
+                            data: Sexp {
+                                kind: Str(
+                                    [
+                                        "a",
+                                        "b",
+                                        "",
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: None,
+                                },
+                            },
+                        },
+                    ],
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+        ),
+    },
+}
