@@ -26,6 +26,7 @@ impl Display for SexpKind {
             SexpKind::Str(_) => todo!(),
             SexpKind::Vec(_) => todo!(),
             SexpKind::MissingArg => todo!(),
+            SexpKind::Bc(_) => todo!(),
         }
     }
 }

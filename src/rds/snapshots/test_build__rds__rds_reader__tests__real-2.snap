@@ -1,0 +1,15 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Real(
+        [
+            1.0,
+            2.0,
+        ],
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}

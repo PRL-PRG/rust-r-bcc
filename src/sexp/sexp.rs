@@ -181,12 +181,38 @@ pub mod lang {
     pub enum Environment {
         Global,
         Base,
-        Nil,
+        Empty,
         Normal(NormalEnv),
     }
 
     #[derive(Debug, PartialEq, Clone)]
-    pub struct NormalEnv;
+    pub struct NormalEnv {
+        parent: Box<Environment>,
+        locked: bool,
+        frame: Frame,
+        hash_frame: Frame,
+    }
+
+    impl NormalEnv {
+        pub fn new(parent: Box<Environment>, locked: bool) -> Self {
+            Self {
+                parent,
+                locked,
+                frame: Frame,
+                hash_frame: Frame,
+            }
+        }
+    }
+
+    impl Into<Environment> for NormalEnv {
+        fn into(self) -> Environment {
+            Environment::Normal(self)
+        }
+    }
+
+    // TODO
+    #[derive(Debug, PartialEq, Clone)]
+    struct Frame;
 
     impl Into<super::SexpKind> for Environment {
         fn into(self) -> super::SexpKind {

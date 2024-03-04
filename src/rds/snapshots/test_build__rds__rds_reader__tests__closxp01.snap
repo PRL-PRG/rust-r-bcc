@@ -1,0 +1,37 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [
+                Formal {
+                    name: Sym {
+                        data: "x",
+                    },
+                    value: Sexp {
+                        kind: MissingArg,
+                        metadata: MetaData {
+                            attr: None,
+                        },
+                    },
+                },
+            ],
+            body: Sexp {
+                kind: Sym(
+                    Sym {
+                        data: "x",
+                    },
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}

@@ -1,0 +1,52 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Lang(
+        Lang {
+            target: Lang(
+                Lang {
+                    target: Sym(
+                        Sym {
+                            data: "hello",
+                        },
+                    ),
+                    args: [
+                        TaggedSexp {
+                            tag: None,
+                            data: Sexp {
+                                kind: Real(
+                                    [
+                                        1.0,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: None,
+                                },
+                            },
+                        },
+                    ],
+                },
+            ),
+            args: [
+                TaggedSexp {
+                    tag: None,
+                    data: Sexp {
+                        kind: Real(
+                            [
+                                2.0,
+                            ],
+                        ),
+                        metadata: MetaData {
+                            attr: None,
+                        },
+                    },
+                },
+            ],
+        },
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}
