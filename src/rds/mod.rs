@@ -1,4 +1,4 @@
-use crate::sexp::sexp::{Sexp, SexpKind};
+use crate::sexp::sexp::{lang, Sexp, SexpKind};
 
 pub mod rds_reader;
 pub mod rds_writer;
@@ -13,7 +13,7 @@ pub struct Flag {
 }
 
 // these constants are taken directly from GNUR
-// and all the comments with them 
+// and all the comments with them
 #[allow(dead_code)]
 mod sexptype {
     pub const NILSXP: u8 = 0; /* nil = NULL */
@@ -86,33 +86,36 @@ impl From<Sexp> for Flag {
     fn from(value: Sexp) -> Self {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,
-            SexpKind::List(_) => todo!(),
-            SexpKind::Nil => todo!(),
-            SexpKind::Closure(_) => todo!(),
-            SexpKind::Environment(_) => todo!(),
-            SexpKind::Promise => todo!(),
-            SexpKind::Lang(_) => todo!(),
-            SexpKind::Bc(_) => todo!(),
-            SexpKind::Char(_) => todo!(),
-            SexpKind::Logic(_) => todo!(),
-            SexpKind::Real(_) => todo!(),
-            SexpKind::Int(_) => todo!(),
-            SexpKind::Complex(_) => todo!(),
-            SexpKind::Str(_) => todo!(),
-            SexpKind::Vec(_) => todo!(),
-            SexpKind::MissingArg => todo!(),
+            SexpKind::List(_) => sexptype::LISTSXP,
+            SexpKind::Nil => sexptype::NILSXP,
+            SexpKind::Closure(_) => sexptype::CLOSXP,
+            SexpKind::Environment(lang::Environment::Global) => sexptype::GLOBALENV_SXP,
+            SexpKind::Environment(lang::Environment::Base) => sexptype::BASEENV_SXP,
+            SexpKind::Environment(lang::Environment::Empty) => sexptype::EMPTYENV_SXP,
+            SexpKind::Environment(lang::Environment::Normal(_)) => sexptype::ENVSXP,
+            SexpKind::Promise => sexptype::PROMSXP,
+            SexpKind::Lang(_) => sexptype::LANGSXP,
+            SexpKind::Bc(_) => sexptype::BCODESXP,
+            SexpKind::Char(_) => sexptype::CHARSXP,
+            SexpKind::Logic(_) => sexptype::LGLSXP,
+            SexpKind::Real(_) => sexptype::REALSXP,
+            SexpKind::Int(_) => sexptype::INTSXP,
+            SexpKind::Complex(_) => sexptype::CPLXSXP,
+            SexpKind::Str(_) => sexptype::STRSXP,
+            SexpKind::Vec(_) => sexptype::VECSXP,
+            SexpKind::MissingArg => sexptype::MISSINGARG_SXP,
         };
 
         if sexp_type == sexptype::REFSXP {
-            todo!()
+            panic!()
         } else {
             Flag {
-                sexp_type,               
-                level : 1 << 3, // utf-8
-                has_attributes : value.metadata.attr.is_some(),
-                has_tag : false,
-                orig : 0
+                sexp_type,
+                level: 1 << 3, // utf-8
+                has_attributes: value.metadata.attr.is_some(),
+                has_tag: false,
+                orig: 0,
             }
         }
     }
-} 
+}
