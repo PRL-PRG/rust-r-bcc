@@ -27,6 +27,7 @@ impl From<std::string::FromUtf8Error> for RDSReaderError {
     }
 }
 
+#[allow(unused)]
 pub struct RDSHeader {
     rds_type: u8,
     format_version: i32,
@@ -260,10 +261,14 @@ pub trait RDSReader: Read {
 
         // the part of the flag used in has attribute is
         // also used in values for REFSXP
+        // since ENVSXP has attr every time then we skip it here
+        // CLOSXP has attribute in different place
         if flag.has_attributes
             && flag.sexp_type != sexptype::REFSXP
             && flag.sexp_type != sexptype::ENVSXP
+            && flag.sexp_type != sexptype::CLOSXP
         {
+            println!("lalalalaal : {}", flag.sexp_type);
             sexp.set_attr(self.read_item(refs)?);
         }
 
@@ -520,12 +525,20 @@ pub trait RDSReader: Read {
     }
 
     fn read_envsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
-        let index = refs.add_placeholder();
         let locked = self.read_int()?;
+
+        // just register ref so my indexes are correct
+        let index = refs.add_placeholder();
+
         let parent = self.read_item(refs)?;
         let frame = self.read_item(refs)?;
         let hashtab = self.read_item(refs)?;
         let attr = self.read_item(refs)?;
+
+        println!("{parent:?}");
+        println!("{frame:?}");
+        println!("{hashtab:?}");
+        println!("{attr:?}");
 
         let res = match parent.kind {
             SexpKind::Environment(env) => {

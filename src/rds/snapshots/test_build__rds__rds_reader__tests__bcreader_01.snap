@@ -1,0 +1,302 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [],
+            body: Sexp {
+                kind: Bc(
+                    Bc {
+                        instructions: [
+                            12,
+                            17,
+                            1,
+                        ],
+                        constpool: [
+                            Sexp {
+                                kind: Nil,
+                                metadata: MetaData {
+                                    attr: None,
+                                },
+                            },
+                            Sexp {
+                                kind: Int(
+                                    [
+                                        1,
+                                        24,
+                                        1,
+                                        38,
+                                        24,
+                                        38,
+                                        1,
+                                        1,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: Some(
+                                        Sexp {
+                                            kind: List(
+                                                [
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "srcfile",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Environment(
+                                                                Normal(
+                                                                    NormalEnv {
+                                                                        parent: Empty,
+                                                                        locked: false,
+                                                                        frame: Frame,
+                                                                        hash_frame: Frame,
+                                                                    },
+                                                                ),
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: Some(
+                                                                    Sexp {
+                                                                        kind: List(
+                                                                            [
+                                                                                TaggedSexp {
+                                                                                    tag: Some(
+                                                                                        "class",
+                                                                                    ),
+                                                                                    data: Sexp {
+                                                                                        kind: Str(
+                                                                                            [
+                                                                                                "srcfilecopy",
+                                                                                                "srcfile",
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData {
+                                                                                            attr: None,
+                                                                                        },
+                                                                                    },
+                                                                                },
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData {
+                                                                            attr: None,
+                                                                        },
+                                                                    },
+                                                                ),
+                                                            },
+                                                        },
+                                                    },
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "class",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Str(
+                                                                [
+                                                                    "srcref",
+                                                                ],
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: None,
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            metadata: MetaData {
+                                                attr: None,
+                                            },
+                                        },
+                                    ),
+                                },
+                            },
+                            Sexp {
+                                kind: Int(
+                                    [
+                                        -2147483648,
+                                        0,
+                                        0,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: Some(
+                                        Sexp {
+                                            kind: List(
+                                                [
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "class",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Str(
+                                                                [
+                                                                    "expressionsIndex",
+                                                                ],
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: None,
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            metadata: MetaData {
+                                                attr: None,
+                                            },
+                                        },
+                                    ),
+                                },
+                            },
+                            Sexp {
+                                kind: Int(
+                                    [
+                                        -2147483648,
+                                        1,
+                                        1,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: Some(
+                                        Sexp {
+                                            kind: List(
+                                                [
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "class",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Str(
+                                                                [
+                                                                    "srcrefsIndex",
+                                                                ],
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: None,
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            metadata: MetaData {
+                                                attr: None,
+                                            },
+                                        },
+                                    ),
+                                },
+                            },
+                        ],
+                    },
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData {
+        attr: Some(
+            Sexp {
+                kind: List(
+                    [
+                        TaggedSexp {
+                            tag: Some(
+                                "srcref",
+                            ),
+                            data: Sexp {
+                                kind: Int(
+                                    [
+                                        1,
+                                        24,
+                                        1,
+                                        38,
+                                        24,
+                                        38,
+                                        1,
+                                        1,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: Some(
+                                        Sexp {
+                                            kind: List(
+                                                [
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "srcfile",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Environment(
+                                                                Normal(
+                                                                    NormalEnv {
+                                                                        parent: Empty,
+                                                                        locked: false,
+                                                                        frame: Frame,
+                                                                        hash_frame: Frame,
+                                                                    },
+                                                                ),
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: Some(
+                                                                    Sexp {
+                                                                        kind: List(
+                                                                            [
+                                                                                TaggedSexp {
+                                                                                    tag: Some(
+                                                                                        "class",
+                                                                                    ),
+                                                                                    data: Sexp {
+                                                                                        kind: Str(
+                                                                                            [
+                                                                                                "srcfilecopy",
+                                                                                                "srcfile",
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData {
+                                                                                            attr: None,
+                                                                                        },
+                                                                                    },
+                                                                                },
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData {
+                                                                            attr: None,
+                                                                        },
+                                                                    },
+                                                                ),
+                                                            },
+                                                        },
+                                                    },
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "class",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Str(
+                                                                [
+                                                                    "srcref",
+                                                                ],
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: None,
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            metadata: MetaData {
+                                                attr: None,
+                                            },
+                                        },
+                                    ),
+                                },
+                            },
+                        },
+                    ],
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+        ),
+    },
+}
