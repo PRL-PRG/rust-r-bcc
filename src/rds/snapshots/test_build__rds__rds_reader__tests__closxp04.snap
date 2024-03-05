@@ -1,0 +1,21 @@
+---
+source: src/rds/rds_reader.rs
+expression: res
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [],
+            body: Sexp {
+                kind: Nil,
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}

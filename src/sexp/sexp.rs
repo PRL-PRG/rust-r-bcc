@@ -7,13 +7,13 @@ pub struct Loc {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MetaData {
-    attr: Option<Box<Sexp>>,
+    pub attr: Option<Box<Sexp>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Sexp {
     pub kind: SexpKind,
-    metadata: MetaData,
+    pub metadata: MetaData,
 }
 
 impl From<SexpKind> for Sexp {
