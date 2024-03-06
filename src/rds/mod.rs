@@ -82,8 +82,8 @@ mod sexptype {
     pub const ATTRLISTSXP: u8 = 239;
 }
 
-impl From<Sexp> for Flag {
-    fn from(value: Sexp) -> Self {
+impl From<&Sexp> for Flag {
+    fn from(value: &Sexp) -> Self {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,
             SexpKind::List(_) => sexptype::LISTSXP,

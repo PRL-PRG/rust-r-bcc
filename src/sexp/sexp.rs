@@ -5,7 +5,7 @@ pub struct Loc {
     col: usize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct MetaData {
     pub attr: Option<Box<Sexp>>,
 }
@@ -134,8 +134,8 @@ pub mod lang {
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct Formal {
-        name: Sym,
-        value: Box<super::Sexp>,
+        pub name: Sym,
+        pub value: Box<super::Sexp>,
     }
 
     impl Formal {
@@ -162,9 +162,9 @@ pub mod lang {
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct Closure {
-        formals: Vec<Formal>,
+        pub(crate) formals: Vec<Formal>,
         pub(crate) body: Box<super::Sexp>,
-        environment: Environment,
+        pub(crate) environment: Environment,
     }
 
     impl Closure {
@@ -174,6 +174,12 @@ pub mod lang {
                 body: Box::new(body),
                 environment,
             }
+        }
+    }
+
+    impl Into<super::Sexp> for Closure {
+        fn into(self) -> super::Sexp {
+            super::SexpKind::Closure(self).into()
         }
     }
 
@@ -207,6 +213,12 @@ pub mod lang {
     impl Into<Environment> for NormalEnv {
         fn into(self) -> Environment {
             Environment::Normal(self)
+        }
+    }
+
+    impl Into<super::Sexp> for Environment {
+        fn into(self) -> super::Sexp {
+            super::SexpKind::Environment(self).into()
         }
     }
 

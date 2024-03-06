@@ -1,8 +1,14 @@
 use std::{env, fs::File};
 
-use rds::rds_reader::{RDSReader, RDSReaderError};
+use rds::{
+    rds_reader::{RDSReader, RDSReaderError},
+    rds_writer::{RDSWriter, RDSWriterError},
+};
 
-use crate::compiler::compiler::Compiler;
+use crate::{
+    compiler::compiler::Compiler,
+    sexp::sexp::{Sexp, SexpKind},
+};
 
 mod compiler;
 mod rds;
@@ -12,14 +18,15 @@ mod sexphelpers;
 
 #[derive(Debug)]
 enum MainError {
-    RDS(RDSReaderError),
+    RDSRead(RDSReaderError),
+    RDSWrite(RDSWriterError),
     IO(std::io::Error),
     WrongArgs,
 }
 
 impl From<RDSReaderError> for MainError {
     fn from(value: RDSReaderError) -> Self {
-        MainError::RDS(value)
+        MainError::RDSRead(value)
     }
 }
 
@@ -29,7 +36,14 @@ impl From<std::io::Error> for MainError {
     }
 }
 
+impl From<RDSWriterError> for MainError {
+    fn from(value: RDSWriterError) -> Self {
+        MainError::RDSWrite(value)
+    }
+}
+
 impl RDSReader for File {}
+impl RDSWriter for File {}
 
 fn main() -> Result<(), MainError> {
     let args: Vec<String> = env::args().collect();
@@ -38,16 +52,23 @@ fn main() -> Result<(), MainError> {
     }
     let mut file = File::open(args[1].as_str())?;
     let sexp = file.read_rds()?;
-    
+
     println!("{sexp:?}");
 
-    let compiler = Compiler::new();
     match sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) => {
+            let compiler = Compiler::new();
             let bc = compiler.cmpfun(cl);
             println!("{bc:?}");
-        },
-        _ => todo!(),
+            let bc: Sexp = bc.into();
+
+            let mut outfile = File::create("compout.dat")?;
+            outfile.write_rds(bc.into())?;
+        }
+        _ => {
+            let mut outfile = File::create("outfile.dat")?;
+            outfile.write_rds(sexp)?;
+        }
     };
 
     Ok(())

@@ -4,8 +4,8 @@ pub struct ConstantPoolIdx(usize);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bc {
-    instructions: Vec<i32>,
-    constpool: Vec<Sexp>,
+    pub instructions: Vec<i32>,
+    pub constpool: Vec<Sexp>,
 }
 
 impl Bc {
