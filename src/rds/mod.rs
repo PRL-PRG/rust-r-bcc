@@ -87,7 +87,7 @@ impl From<&Sexp> for Flag {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,
             SexpKind::List(_) => sexptype::LISTSXP,
-            SexpKind::Nil => sexptype::NILSXP,
+            SexpKind::Nil => sexptype::NILVALUE_SXP,
             SexpKind::Closure(_) => sexptype::CLOSXP,
             SexpKind::Environment(lang::Environment::Global) => sexptype::GLOBALENV_SXP,
             SexpKind::Environment(lang::Environment::Base) => sexptype::BASEENV_SXP,

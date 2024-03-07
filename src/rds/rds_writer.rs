@@ -206,7 +206,7 @@ pub trait RDSWriter: Write {
 
             self.write_item(item.data.clone())?;
         }
-        self.write_int(super::sexptype::NILSXP as i32)?;
+        self.write_int(super::sexptype::NILVALUE_SXP as i32)?;
 
         Ok(())
     }
