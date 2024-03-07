@@ -111,7 +111,9 @@ pub trait RDSWriter: Write {
 
     fn write_item(&mut self, sexp: Sexp) -> Ret {
         let flag: Flag = (&sexp).into();
-        self.write_flags(flag)?;
+        if flag.sexp_type != super::sexptype::LISTSXP {
+            self.write_flags(flag)?;
+        }
         if flag.has_attributes {
             let Some(attr) = &sexp.metadata.attr else {
                 unreachable!()
@@ -119,8 +121,11 @@ pub trait RDSWriter: Write {
             self.write_item(*attr.clone())?;
         }
         match sexp.kind {
-            SexpKind::Sym(_) => todo!(),
-            SexpKind::List(taggedlist) => self.write_listsxp(taggedlist, sexp.metadata),
+            SexpKind::Sym(sym) => {
+                self.write_int(super::sexptype::CHARSXP as i32)?;
+                self.write_charsxp(sym.data.as_str())
+            }
+            SexpKind::List(taggedlist) => self.write_listsxp(taggedlist, sexp.metadata, flag),
             SexpKind::Nil => Ok(()),
             SexpKind::Closure(closure) => self.write_closxp(closure, sexp.metadata),
             SexpKind::Environment(lang::Environment::Normal(_)) => todo!(),
@@ -147,10 +152,25 @@ pub trait RDSWriter: Write {
             }
             SexpKind::Int(ints) => self.write_intvec(ints),
             SexpKind::Complex(_) => todo!(),
-            SexpKind::Str(_) => todo!(),
+            SexpKind::Str(strs) => {
+                self.write_len(strs.len())?;
+                for s in strs {
+                    self.write_int(super::sexptype::CHARSXP as i32)?;
+                    self.write_charsxp(s.as_str())?;
+                }
+                Ok(())
+            }
             SexpKind::Vec(_) => todo!(),
             SexpKind::MissingArg => todo!(),
         }
+    }
+
+    fn write_charsxp(&mut self, data: &str) -> Ret {
+        self.write_int(data.len() as i32)?;
+        for b in data.bytes() {
+            self.write_byte(b)?;
+        }
+        Ok(())
     }
 
     // TODO implement more options for consts
@@ -168,21 +188,25 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_listsxp(&mut self, list: data::List, metadata: MetaData) -> Ret {
+    fn write_listsxp(&mut self, list: data::List, metadata: MetaData, flag: Flag) -> Ret {
+        let mut flag = flag;
         if list.is_empty() {
             return self.write_item(SexpKind::Nil.into());
         }
 
-        let first = list.first().unwrap();
-        if let Some(tag) = &first.tag {
-            self.write_item(SexpKind::Sym(tag.as_str().into()).into())?;
+        for item in list {
+            self.write_flags(flag.clone())?;
+            flag = Flag {
+                sexp_type: super::sexptype::LISTSXP,
+                level: 0,
+                has_attributes: false,
+                has_tag: false,
+                orig: 0,
+            };
+
+            self.write_item(item.data.clone())?;
         }
-
-        self.write_item(first.data.clone())?;
-        
-    
-        todo!();
-
+        self.write_int(super::sexptype::NILSXP as i32)?;
 
         Ok(())
     }
@@ -195,7 +219,17 @@ pub trait RDSWriter: Write {
                 .into_iter()
                 .map(|x| data::TaggedSexp::new_with_tag(*x.value, x.name.data))
                 .collect();
-            self.write_listsxp(vals, MetaData::default())
+            self.write_listsxp(
+                vals,
+                MetaData::default(),
+                Flag {
+                    sexp_type: super::sexptype::LISTSXP,
+                    level: 0,
+                    has_attributes: false,
+                    has_tag: false,
+                    orig: 0,
+                },
+            )
         }
     }
 
