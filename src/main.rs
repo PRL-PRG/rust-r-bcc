@@ -47,16 +47,18 @@ impl RDSWriter for File {}
 
 fn main() -> Result<(), MainError> {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
+    if args.len() != 3 {
         return Err(MainError::WrongArgs);
     }
     let mut file = File::open(args[1].as_str())?;
     let sexp = file.read_rds()?;
 
+    let compile = args[2] == "-c";
+
     println!("{sexp:?}");
 
     match sexp.kind {
-        sexp::sexp::SexpKind::Closure(cl) => {
+        sexp::sexp::SexpKind::Closure(cl) if compile => {
             let compiler = Compiler::new();
             let bc = compiler.cmpfun(cl);
             println!("{bc:?}");

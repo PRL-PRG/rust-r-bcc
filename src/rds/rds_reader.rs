@@ -160,6 +160,7 @@ pub trait RDSReader: Read {
         refs: &mut RefsTable,
         flag: Flag,
     ) -> Result<Sexp, RDSReaderError> {
+        //println!("flag : {:?}", flag.sexp_type);
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
@@ -198,7 +199,6 @@ pub trait RDSReader: Read {
             && flag.sexp_type != sexptype::ENVSXP
             && flag.sexp_type != sexptype::CLOSXP
         {
-            println!("lalalalaal : {}", flag.sexp_type);
             sexp.set_attr(self.read_item(refs)?);
         }
 
@@ -223,6 +223,7 @@ pub trait RDSReader: Read {
 
     fn read_len(&mut self) -> Result<usize, RDSReaderError> {
         let len = self.read_int()?;
+        //println!("len : {}", len);
         if len < -1 {
             Err(RDSReaderError::DataError(format!(
                 "Negative vector len {len}"

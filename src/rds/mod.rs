@@ -82,6 +82,13 @@ mod sexptype {
     pub const ATTRLISTSXP: u8 = 239;
 }
 
+// This is defined in Defn.h
+#[allow(dead_code)]
+mod string_format {
+    pub const UTF8: i32 = 1 << 3;
+    pub const ASCII: i32 = 1 << 6;
+}
+
 impl From<&Sexp> for Flag {
     fn from(value: &Sexp) -> Self {
         let sexp_type = match value.kind {
@@ -106,12 +113,17 @@ impl From<&Sexp> for Flag {
             SexpKind::MissingArg => sexptype::MISSINGARG_SXP,
         };
 
+        let str_fmt = match value.kind {
+            SexpKind::Sym(_) | SexpKind::Str(_) | SexpKind::Char(_) => string_format::ASCII,
+            _ => 0,
+        };
+
         if sexp_type == sexptype::REFSXP {
             panic!()
         } else {
             Flag {
                 sexp_type,
-                level: 1 << 3, // utf-8
+                level: str_fmt,
                 has_attributes: value.metadata.attr.is_some(),
                 has_tag: false,
                 orig: 0,
