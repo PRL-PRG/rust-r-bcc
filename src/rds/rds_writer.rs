@@ -24,7 +24,7 @@ pub trait RDSWriter: Write {
         if len != 1 {
             return Err(RDSWriterError::DataError("Cannot write byte".into()));
         }
-        println!("{byte}");
+        //println!("{byte}");
         Ok(())
     }
 
@@ -34,7 +34,7 @@ pub trait RDSWriter: Write {
         if len != 4 {
             return Err(RDSWriterError::DataError("Cannot write int".into()));
         }
-        println!("{value}");
+        //println!("{value}");
         Ok(())
     }
 
@@ -195,7 +195,15 @@ pub trait RDSWriter: Write {
         }
 
         for item in list {
+            flag.has_tag = item.tag.is_some();
             self.write_flags(flag.clone())?;
+
+            if let Some(tag) = item.tag {
+                let tag: lang::Sym = tag.as_str().into();
+                let tag: Sexp = tag.into();
+                self.write_item(tag)?;
+            }
+
             flag = Flag {
                 sexp_type: super::sexptype::LISTSXP,
                 level: 0,
@@ -204,7 +212,7 @@ pub trait RDSWriter: Write {
                 orig: 0,
             };
 
-            self.write_item(item.data.clone())?;
+            self.write_item(item.data)?;
         }
         self.write_int(super::sexptype::NILVALUE_SXP as i32)?;
 

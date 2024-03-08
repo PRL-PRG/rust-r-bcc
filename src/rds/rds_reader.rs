@@ -84,6 +84,10 @@ pub trait RDSReader: Read {
         let mut buf: [u8; 4] = [0; 4];
         let len = self.read(&mut buf)?;
         if len != 4 {
+            println!(
+                "{:?}",
+                buf[0..len].into_iter().cloned().collect::<Vec<u8>>()
+            );
             panic!();
             return Err(RDSReaderError::DataError("Cannot read int".to_string()));
         }
