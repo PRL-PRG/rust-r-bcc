@@ -1,4 +1,4 @@
-use crate::sexp::sexp::{lang, Sexp, SexpKind};
+use crate::sexp::sexp::{data, lang, Sexp, SexpKind};
 
 pub mod rds_reader;
 pub mod rds_writer;
@@ -9,6 +9,7 @@ pub struct Flag {
     level: i32,
     has_attributes: bool,
     has_tag: bool,
+    obj: bool,
     orig: i32,
 }
 
@@ -114,7 +115,7 @@ impl From<&Sexp> for Flag {
         };
 
         let str_fmt = match value.kind {
-            SexpKind::Sym(_) | SexpKind::Str(_) | SexpKind::Char(_) => string_format::ASCII,
+            SexpKind::Char(_) => string_format::ASCII,
             _ => 0,
         };
 
@@ -125,7 +126,12 @@ impl From<&Sexp> for Flag {
                 sexp_type,
                 level: str_fmt,
                 has_attributes: value.metadata.attr.is_some(),
-                has_tag: false,
+                has_tag: if let SexpKind::Closure(_) = value.kind {
+                    true
+                } else {
+                    false
+                },
+                obj: value.metadata.is_obj(),
                 orig: 0,
             }
         }

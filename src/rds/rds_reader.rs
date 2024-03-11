@@ -211,12 +211,14 @@ pub trait RDSReader: Read {
         let level: i32 = flag >> 12;
         let has_attributes = (flag & (1 << 9)) != 0;
         let has_tag = (flag & (1 << 10)) != 0;
+        let obj = (flag & (1 << 8)) != 0;
 
         Ok(Flag {
             sexp_type,
             level,
             has_attributes,
             has_tag,
+            obj,
             orig: flag,
         })
     }

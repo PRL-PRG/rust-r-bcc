@@ -24,7 +24,6 @@ pub trait RDSWriter: Write {
         if len != 1 {
             return Err(RDSWriterError::DataError("Cannot write byte".into()));
         }
-        //println!("{byte}");
         Ok(())
     }
 
@@ -34,7 +33,6 @@ pub trait RDSWriter: Write {
         if len != 4 {
             return Err(RDSWriterError::DataError("Cannot write int".into()));
         }
-        //println!("{value}");
         Ok(())
     }
 
@@ -80,6 +78,10 @@ pub trait RDSWriter: Write {
             res |= 1 << 10;
         }
 
+        if flags.obj {
+            res |= 1 << 8;
+        }
+
         self.write_int(res)
     }
 
@@ -119,7 +121,9 @@ pub trait RDSWriter: Write {
 
         match &sexp.kind {
             SexpKind::Sym(sym) => {
-                self.write_int(super::sexptype::CHARSXP as i32)?;
+                self.write_int(
+                    super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
+                )?;
                 self.write_charsxp(sym.data.as_str())
             }
             SexpKind::List(taggedlist) => self.write_listsxp(taggedlist, &sexp.metadata, flag),
@@ -148,14 +152,14 @@ pub trait RDSWriter: Write {
                 }
                 Ok(())
             }
-            SexpKind::Int(ints) => {
-                self.write_intvec(ints)
-            }
+            SexpKind::Int(ints) => self.write_intvec(ints),
             SexpKind::Complex(_) => todo!(),
             SexpKind::Str(strs) => {
                 self.write_len(strs.len())?;
                 for s in strs {
-                    self.write_int(super::sexptype::CHARSXP as i32)?;
+                    self.write_int(
+                        super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
+                    )?;
                     self.write_charsxp(s.as_str())?;
                 }
                 Ok(())
@@ -189,7 +193,12 @@ pub trait RDSWriter: Write {
             // here is the place that will
             // for sure need to change to
             // allow more types
-            self.write_int(0x00)?;
+            let flags: Flag = c.into();
+            if flags.sexp_type == super::sexptype::NILVALUE_SXP {
+                self.write_int(super::sexptype::NILSXP as i32)?;
+            } else {
+                self.write_int(flags.sexp_type as i32)?
+            }
             self.write_item(c)?;
         }
         Ok(())
@@ -198,7 +207,8 @@ pub trait RDSWriter: Write {
     fn write_listsxp(&mut self, list: &data::List, metadata: &MetaData, flag: Flag) -> Ret {
         let mut flag = flag;
         if list.is_empty() {
-            return self.write_item(&SexpKind::Nil.into());
+            return self.write_int(super::sexptype::NILVALUE_SXP as i32);
+            //return self.write_item(&SexpKind::Nil.into());
         }
 
         for item in list {
@@ -217,19 +227,20 @@ pub trait RDSWriter: Write {
                 level: 0,
                 has_attributes: false,
                 has_tag: false,
+                obj: false,
                 orig: 0,
             };
 
             self.write_item(&item.data)?;
         }
-        self.write_item(&SexpKind::Nil.into())?;
+        self.write_int(super::sexptype::NILVALUE_SXP as i32)?;
 
         Ok(())
     }
 
     fn write_formals(&mut self, formals: &Vec<lang::Formal>) -> Ret {
         if formals.is_empty() {
-            self.write_item(&SexpKind::Nil.into())
+            self.write_int(super::sexptype::NILVALUE_SXP as i32)
         } else {
             let vals: data::List = formals
                 .into_iter()
@@ -243,6 +254,7 @@ pub trait RDSWriter: Write {
                     level: 0,
                     has_attributes: false,
                     has_tag: false,
+                    obj: false,
                     orig: 0,
                 },
             )

@@ -10,6 +10,33 @@ pub struct MetaData {
     pub attr: Option<Box<Sexp>>,
 }
 
+impl MetaData {
+    pub fn is_obj(&self) -> bool {
+        if self.attr.is_some() {
+            let attr = self.attr.clone().unwrap();
+            if let Sexp {
+                kind: SexpKind::List(list),
+                ..
+            } = *attr
+            {
+                list.into_iter().any(|x| {
+                    println!("{x:?}");
+                    let x = match x.tag {
+                        Some(x) if x.as_str() == "class" => true,
+                        _ => false,
+                    };
+                    println!("{x}");
+                    x
+                })
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Sexp {
     pub kind: SexpKind,

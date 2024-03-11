@@ -64,11 +64,11 @@ fn main() -> Result<(), MainError> {
             println!("{bc:?}");
             let bc: Sexp = bc.into();
 
-            let mut outfile = File::create("compout.dat")?;
+            let mut outfile = File::create("temp/compout.dat")?;
             outfile.write_rds(bc.into())?;
         }
         _ => {
-            let mut outfile = File::create("outfile.dat")?;
+            let mut outfile = File::create("temp/outfile.dat")?;
             outfile.write_rds(sexp)?;
         }
     };
