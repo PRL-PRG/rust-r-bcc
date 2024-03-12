@@ -1,7 +1,10 @@
-use crate::sexp::sexp::{data, lang, Sexp, SexpKind};
+use crate::sexp::sexp::{lang, Sexp, SexpKind};
 
 pub mod rds_reader;
 pub mod rds_writer;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Flag {
@@ -11,6 +14,25 @@ pub struct Flag {
     has_tag: bool,
     obj: bool,
     orig: i32,
+}
+
+#[allow(unused)]
+pub struct RDSHeader {
+    rds_type: u8,
+    format_version: i32,
+    writer_version: i32,
+    min_reader_version: i32,
+}
+
+pub struct RDSResult {
+    pub header: RDSHeader,
+    pub data: Sexp,
+}
+
+impl RDSResult {
+    pub fn new(header: RDSHeader, data: Sexp) -> Self {
+        Self { header, data }
+    }
 }
 
 // these constants are taken directly from GNUR

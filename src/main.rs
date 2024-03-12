@@ -7,6 +7,7 @@ use rds::{
 
 use crate::{
     compiler::compiler::Compiler,
+    rds::RDSResult,
     sexp::sexp::{Sexp, SexpKind},
 };
 
@@ -51,7 +52,7 @@ fn main() -> Result<(), MainError> {
         return Err(MainError::WrongArgs);
     }
     let mut file = File::open(args[1].as_str())?;
-    let sexp = file.read_rds()?;
+    let RDSResult { header, data: sexp } = file.read_rds()?;
 
     let compile = args[2] == "-c";
 
@@ -65,11 +66,11 @@ fn main() -> Result<(), MainError> {
             let bc: Sexp = bc.into();
 
             let mut outfile = File::create("temp/compout.dat")?;
-            outfile.write_rds(bc.into())?;
+            outfile.write_rds(header, bc.into())?;
         }
         _ => {
             let mut outfile = File::create("temp/outfile.dat")?;
-            outfile.write_rds(sexp)?;
+            outfile.write_rds(header, sexp)?;
         }
     };
 

@@ -2,7 +2,7 @@ use std::io::{BufWriter, Write};
 
 use crate::sexp::sexp::{data, lang, MetaData, Sexp, SexpKind};
 
-use super::Flag;
+use super::{Flag, RDSHeader};
 
 #[derive(Debug)]
 pub enum RDSWriterError {
@@ -53,16 +53,17 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_header(&mut self) -> Ret {
+    fn write_header(&mut self, header: RDSHeader) -> Ret {
         self.write_byte(b'X')?;
         self.write_byte(b'\n')?;
-        self.write_int(3)?;
+        self.write_int(header.format_version)?;
 
-        // R version
-        self.write_int(263168)?;
+        self.write_int(header.writer_version)?;
 
-        // version 3.5.0
-        self.write_int(3 * 65536 + 5 * 256 + 0)?;
+        self.write_int(header.min_reader_version)?;
+        if header.format_version == 3 {
+            self.write_str("UTF-8")?;
+        }
         Ok(())
     }
 
@@ -106,9 +107,8 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_rds(&mut self, sexp: Sexp) -> Ret {
-        self.write_header()?;
-        self.write_str("UTF-8")?;
+    fn write_rds(&mut self, header: RDSHeader, sexp: Sexp) -> Ret {
+        self.write_header(header)?;
         self.write_item(&sexp)?;
         Ok(())
     }
@@ -142,7 +142,16 @@ pub trait RDSWriter: Write {
                 self.write_intvec(&bc.instructions)?;
                 self.write_bcconsts(&bc.constpool)
             }
-            SexpKind::Char(_) => todo!(),
+            SexpKind::Char(chars) => {
+                // lenght of the char vector is limited
+                self.write_int(chars.len() as i32)?;
+
+                for val in chars {
+                    self.write_byte(*val as u8)?;
+                }
+
+                Ok(())
+            }
             SexpKind::Logic(_) => todo!(),
             SexpKind::Real(reals) => {
                 self.write_len(reals.len())?;
@@ -164,8 +173,15 @@ pub trait RDSWriter: Write {
                 }
                 Ok(())
             }
-            SexpKind::Vec(_) => todo!(),
-            SexpKind::MissingArg => todo!(),
+            SexpKind::Vec(items) => {
+                self.write_len(items.len())?;
+
+                for item in items {
+                    self.write_item(item)?;
+                }
+                Ok(())
+            }
+            SexpKind::MissingArg => Ok(()),
         }?;
         if flag.has_attributes {
             let Some(attr) = sexp.metadata.attr.clone() else {
@@ -208,12 +224,10 @@ pub trait RDSWriter: Write {
         let mut flag = flag;
         if list.is_empty() {
             return self.write_int(super::sexptype::NILVALUE_SXP as i32);
-            //return self.write_item(&SexpKind::Nil.into());
         }
 
         for item in list {
             flag.has_tag = item.tag.is_some();
-            //println!("in list");
             self.write_flags(flag.clone())?;
 
             if let Some(tag) = &item.tag {
@@ -284,25 +298,35 @@ mod tests {
 
     use super::*;
 
+    macro_rules! test_data {
+        ( $( $x:expr ),* $(,)?) => {
+            let indata: Vec<u8> = vec![$($x,)*];
+
+            let data = Cursor::new(indata);
+            let mut reader = BufReader::new(data);
+            let input = reader.read_rds().unwrap();
+
+            println!("{:?}", input.data);
+
+            let outdata: Vec<u8> = vec![];
+            let mut writer = BufWriter::new(outdata);
+            writer.write_rds(input.header, input.data).unwrap();
+            writer.flush().unwrap();
+
+            assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
+        }
+    }
+
+
     #[test]
     fn test_intsxp() {
-        let indata: Vec<u8> = vec![
+        test_data![
             0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
             0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x0d, 0x00,
             0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
         ];
-
-        let data = Cursor::new(indata);
-        let mut reader = BufReader::new(data);
-        let input = reader.read_rds().unwrap();
-
-        println!("{input:?}");
-
-        let outdata: Vec<u8> = vec![];
-        let mut writer = BufWriter::new(outdata);
-        writer.write_rds(input).unwrap();
-        writer.flush().unwrap();
-
-        assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
     }
+
+    #[test]
+    fn test_realsxp() {}
 }

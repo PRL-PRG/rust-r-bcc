@@ -91,7 +91,7 @@ mod tests {
     use super::*;
     use std::io::{BufReader, Cursor};
 
-    use crate::rds::rds_reader::RDSReader;
+    use crate::rds::{rds_reader::RDSReader, RDSResult};
 
     #[test]
     fn test_basic() {
@@ -112,7 +112,10 @@ mod tests {
 
         let bc_corr = Cursor::new(bc_corr);
         let mut reader = BufReader::new(bc_corr);
-        let bc_correct = reader.read_rds().unwrap();
+        let RDSResult {
+            header: _,
+            data: bc_correct,
+        } = reader.read_rds().unwrap();
         let Sexp {
             kind: SexpKind::Closure(bc_correct),
             ..
@@ -129,7 +132,10 @@ mod tests {
 
         let source = Cursor::new(source);
         let mut reader = BufReader::new(source);
-        let source = reader.read_rds().unwrap();
+        let RDSResult {
+            header: _,
+            data: source,
+        } = reader.read_rds().unwrap();
         let Sexp {
             kind: SexpKind::Closure(source),
             ..
