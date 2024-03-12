@@ -1,13 +1,11 @@
 ---
 source: src/rds/tests.rs
-assertion_line: 97
 expression: res
 ---
 Sexp {
-    kind: Int(
+    kind: Real(
         [
-            1,
-            2,
+            1.0,
         ],
     ),
     metadata: MetaData {
