@@ -1,5 +1,7 @@
 use crate::sexp::sexp::{lang, Sexp, SexpKind};
 
+use self::rds_reader::RDSReaderError;
+
 pub mod rds_reader;
 pub mod rds_writer;
 
@@ -32,6 +34,43 @@ pub struct RDSResult {
 impl RDSResult {
     pub fn new(header: RDSHeader, data: Sexp) -> Self {
         Self { header, data }
+    }
+}
+
+#[derive(Default)]
+pub struct RefsTable {
+    data: Vec<Sexp>,
+}
+
+impl RefsTable {
+    fn add_ref(&mut self, data: Sexp) -> i32 {
+        if let Some(idx) = self.data.iter().position(|x| x == &data) {
+            return idx as i32;
+        }
+        self.data.push(data);
+        (self.data.len() - 1) as i32
+    }
+
+    fn get_ref(&mut self, index: i32) -> Option<Sexp> {
+        if index < 0 || index > self.data.len() as i32 {
+            None
+        } else {
+            Some(self.data[index as usize].clone())
+        }
+    }
+
+    fn add_placeholder(&mut self) -> i32 {
+        self.data.push(SexpKind::Nil.into());
+        (self.data.len() - 1) as i32
+    }
+
+    fn update_ref(&mut self, index: i32, data: Sexp) -> bool {
+        if index < 0 || index > self.data.len() as i32 {
+            false
+        } else {
+            self.data[index as usize] = data;
+            true
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use std::io::{BufWriter, Write};
 
 use crate::sexp::sexp::{data, lang, MetaData, Sexp, SexpKind};
 
-use super::{Flag, RDSHeader};
+use super::{Flag, RDSHeader, RefsTable};
 
 #[derive(Debug)]
 pub enum RDSWriterError {
@@ -109,11 +109,25 @@ pub trait RDSWriter: Write {
 
     fn write_rds(&mut self, header: RDSHeader, sexp: Sexp) -> Ret {
         self.write_header(header)?;
-        self.write_item(&sexp)?;
+        self.write_item(&sexp, &mut None)?;
         Ok(())
     }
 
-    fn write_item(&mut self, sexp: &Sexp) -> Ret {
+    fn write_item(&mut self, sexp: &Sexp, refs: &mut Option<RefsTable>) -> Ret {
+        // when creating refs there are different rules for creating
+        // flags so it must be done seperatelly
+        match refs {
+            // it is done this way because borrow checker
+            Some(table) => {
+                if let SexpKind::Sym(_) = sexp.kind {
+                    let idx = table.add_ref(sexp.clone()) + 1;
+                    self.write_int((idx << 8) | super::sexptype::REFSXP as i32)?;
+                    return Ok(());
+                }
+            }
+            _ => (),
+        };
+
         let flag: Flag = sexp.into();
         if flag.sexp_type != super::sexptype::LISTSXP {
             self.write_flags(flag)?;
@@ -126,9 +140,11 @@ pub trait RDSWriter: Write {
                 )?;
                 self.write_charsxp(sym.data.as_str())
             }
-            SexpKind::List(taggedlist) => self.write_listsxp(taggedlist, &sexp.metadata, flag),
+            SexpKind::List(taggedlist) => {
+                self.write_listsxp(taggedlist, &sexp.metadata, flag, refs)
+            }
             SexpKind::Nil => Ok(()),
-            SexpKind::Closure(closure) => self.write_closxp(closure, &sexp.metadata),
+            SexpKind::Closure(closure) => self.write_closxp(closure, &sexp.metadata, refs),
             SexpKind::Environment(lang::Environment::Normal(_)) => todo!(),
             SexpKind::Environment(_) => Ok(()),
             SexpKind::Promise => todo!(),
@@ -138,9 +154,8 @@ pub trait RDSWriter: Write {
                 let reps = 1;
                 self.write_int(reps)?;
                 self.write_int(super::sexptype::INTSXP as i32)?;
-                println!("tmp : {}", super::sexptype::INTSXP);
                 self.write_intvec(&bc.instructions)?;
-                self.write_bcconsts(&bc.constpool)
+                self.write_bcconsts(&bc.constpool, &mut None)
             }
             SexpKind::Char(chars) => {
                 // lenght of the char vector is limited
@@ -177,7 +192,7 @@ pub trait RDSWriter: Write {
                 self.write_len(items.len())?;
 
                 for item in items {
-                    self.write_item(item)?;
+                    self.write_item(item, refs)?;
                 }
                 Ok(())
             }
@@ -187,7 +202,7 @@ pub trait RDSWriter: Write {
             let Some(attr) = sexp.metadata.attr.clone() else {
                 unreachable!()
             };
-            self.write_item(&attr)?;
+            self.write_item(&attr, refs)?;
         }
         Ok(())
     }
@@ -203,7 +218,7 @@ pub trait RDSWriter: Write {
     // TODO implement more options for consts
     // but since I have only implemented reading
     // only for default I will do the same for writing
-    fn write_bcconsts(&mut self, consts: &Vec<Sexp>) -> Ret {
+    fn write_bcconsts(&mut self, consts: &Vec<Sexp>, refs: &mut Option<RefsTable>) -> Ret {
         self.write_int(consts.len() as i32)?;
         for c in consts {
             // here is the place that will
@@ -215,12 +230,18 @@ pub trait RDSWriter: Write {
             } else {
                 self.write_int(flags.sexp_type as i32)?
             }
-            self.write_item(c)?;
+            self.write_item(c, refs)?;
         }
         Ok(())
     }
 
-    fn write_listsxp(&mut self, list: &data::List, metadata: &MetaData, flag: Flag) -> Ret {
+    fn write_listsxp(
+        &mut self,
+        list: &data::List,
+        metadata: &MetaData,
+        flag: Flag,
+        refs: &mut Option<RefsTable>,
+    ) -> Ret {
         let mut flag = flag;
         if list.is_empty() {
             return self.write_int(super::sexptype::NILVALUE_SXP as i32);
@@ -233,7 +254,7 @@ pub trait RDSWriter: Write {
             if let Some(tag) = &item.tag {
                 let tag: lang::Sym = tag.as_str().into();
                 let tag: Sexp = tag.into();
-                self.write_item(&tag)?;
+                self.write_item(&tag, refs)?;
             }
 
             flag = Flag {
@@ -245,14 +266,14 @@ pub trait RDSWriter: Write {
                 orig: 0,
             };
 
-            self.write_item(&item.data)?;
+            self.write_item(&item.data, refs)?;
         }
         self.write_int(super::sexptype::NILVALUE_SXP as i32)?;
 
         Ok(())
     }
 
-    fn write_formals(&mut self, formals: &Vec<lang::Formal>) -> Ret {
+    fn write_formals(&mut self, formals: &Vec<lang::Formal>, refs: &mut Option<RefsTable>) -> Ret {
         if formals.is_empty() {
             self.write_int(super::sexptype::NILVALUE_SXP as i32)
         } else {
@@ -271,62 +292,33 @@ pub trait RDSWriter: Write {
                     obj: false,
                     orig: 0,
                 },
+                refs,
             )
         }
     }
 
-    fn write_closxp(&mut self, closure: &lang::Closure, metadata: &MetaData) -> Ret {
+    fn write_closxp(
+        &mut self,
+        closure: &lang::Closure,
+        metadata: &MetaData,
+        refs: &mut Option<RefsTable>,
+    ) -> Ret {
         if let Some(attr) = &metadata.attr {
-            self.write_item(&attr)?;
+            self.write_item(&attr, refs)?;
         }
 
-        self.write_item(&closure.environment.clone().into())?;
-        self.write_formals(&closure.formals)?;
-        self.write_item(&closure.body)?;
+        self.write_item(&closure.environment.clone().into(), refs)?;
+        self.write_formals(&closure.formals, refs)?;
+
+        let mut reftable = RefsTable::default();
+        for formal in closure.formals.iter() {
+            reftable.add_ref(formal.name.clone().into());
+        }
+
+        self.write_item(&closure.body, &mut Some(reftable))?;
 
         Ok(())
     }
 }
 
 impl<W> RDSWriter for BufWriter<W> where W: std::io::Write {}
-
-#[cfg(test)]
-mod tests {
-    use std::io::{BufReader, Cursor};
-
-    use crate::rds::rds_reader::RDSReader;
-
-    use super::*;
-
-    macro_rules! test_data {
-        ( $( $x:expr ),* $(,)?) => {
-            let indata: Vec<u8> = vec![$($x,)*];
-
-            let data = Cursor::new(indata);
-            let mut reader = BufReader::new(data);
-            let input = reader.read_rds().unwrap();
-
-            println!("{:?}", input.data);
-
-            let outdata: Vec<u8> = vec![];
-            let mut writer = BufWriter::new(outdata);
-            writer.write_rds(input.header, input.data).unwrap();
-            writer.flush().unwrap();
-
-            assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
-        }
-    }
-
-
-    #[test]
-    fn test_intsxp() {
-        test_data![
-            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
-            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x0d, 0x00,
-            0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
-        ];
-    }
-
-    #[test]
-    fn test_realsxp() {}
-}

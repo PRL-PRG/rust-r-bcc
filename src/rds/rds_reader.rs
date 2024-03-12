@@ -12,6 +12,7 @@ use crate::sexp::sexp::SexpKind;
 use super::sexptype;
 use super::Flag;
 use super::RDSResult;
+use super::RefsTable;
 
 #[derive(Debug)]
 pub enum RDSReaderError {
@@ -29,43 +30,6 @@ impl From<std::io::Error> for RDSReaderError {
 impl From<std::string::FromUtf8Error> for RDSReaderError {
     fn from(value: std::string::FromUtf8Error) -> Self {
         RDSReaderError::DataError(format!("UTF-8 error {value:?}"))
-    }
-}
-
-#[derive(Default)]
-pub struct RefsTable {
-    data: Vec<Sexp>,
-}
-
-impl RefsTable {
-    fn add_ref(&mut self, data: Sexp) {
-        self.data.push(data);
-    }
-
-    fn get_ref(&mut self, index: i32) -> Result<Sexp, RDSReaderError> {
-        if index < 0 || index > self.data.len() as i32 {
-            Err(RDSReaderError::DataError(format!(
-                "Wrong ref index {index}"
-            )))
-        } else {
-            Ok(self.data[index as usize].clone())
-        }
-    }
-
-    fn add_placeholder(&mut self) -> i32 {
-        self.data.push(SexpKind::Nil.into());
-        (self.data.len() - 1) as i32
-    }
-
-    fn update_ref(&mut self, index: i32, data: Sexp) -> Result<(), RDSReaderError> {
-        if index < 0 || index > self.data.len() as i32 {
-            Err(RDSReaderError::DataError(format!(
-                "Wrong ref index {index}"
-            )))
-        } else {
-            self.data[index as usize] = data;
-            Ok(())
-        }
     }
 }
 
@@ -223,7 +187,6 @@ pub trait RDSReader: Read {
 
     fn read_len(&mut self) -> Result<usize, RDSReaderError> {
         let len = self.read_int()?;
-        //println!("len : {}", len);
         if len < -1 {
             Err(RDSReaderError::DataError(format!(
                 "Negative vector len {len}"
@@ -231,7 +194,7 @@ pub trait RDSReader: Read {
         } else if len >= 0 {
             Ok(len as usize)
         } else {
-            // len == -1
+            // if len == -1
             let upper = self.read_int()?;
             let lower = self.read_int()?;
             // in orignal code descriped as sanity check
@@ -466,11 +429,6 @@ pub trait RDSReader: Read {
         let hashtab = self.read_item(refs)?;
         let attr = self.read_item(refs)?;
 
-        println!("{parent:?}");
-        println!("{frame:?}");
-        println!("{hashtab:?}");
-        println!("{attr:?}");
-
         let res = match parent.kind {
             SexpKind::Environment(env) => {
                 let env = lang::NormalEnv::new(Box::new(env), locked == 1);
@@ -478,7 +436,11 @@ pub trait RDSReader: Read {
                 let env: SexpKind = env.into();
                 let mut env: Sexp = env.into();
                 env.set_attr(attr);
-                refs.update_ref(index, env.clone())?;
+                if !refs.update_ref(index, env.clone()) {
+                    return Err(RDSReaderError::DataError(format!(
+                        "Wrong ref index {index}"
+                    )));
+                }
                 Ok(env)
             }
             _ => Err(RDSReaderError::DataError(
@@ -492,7 +454,12 @@ pub trait RDSReader: Read {
         let index = flags.orig >> 8;
         let index = if index == 0 { self.read_int()? } else { index } - 1;
 
-        refs.get_ref(index)
+        refs.get_ref(index).map_or(
+            Err(RDSReaderError::DataError(format!(
+                "Wrong ref index {index}"
+            ))),
+            |x| Ok(x),
+        )
     }
 
     fn read_bc(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
@@ -540,8 +507,3 @@ pub trait RDSReader: Read {
 }
 
 impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
-
-#[cfg(test)]
-mod tests {
-
-}
