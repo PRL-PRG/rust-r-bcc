@@ -93,7 +93,6 @@ pub trait RDSWriter: Write {
             self.write_int((len / 4294967296) as i32)?;
             self.write_int((len % 4294967296) as i32)
         } else {
-            //println!("len : {}", len);
             self.write_int(len as i32)
         }
     }
@@ -148,7 +147,7 @@ pub trait RDSWriter: Write {
             SexpKind::Environment(lang::Environment::Normal(_)) => todo!(),
             SexpKind::Environment(_) => Ok(()),
             SexpKind::Promise => todo!(),
-            SexpKind::Lang(_) => todo!(),
+            SexpKind::Lang(lang) => self.write_langsxp(lang, &sexp.metadata, refs),
             SexpKind::Bc(bc) => {
                 // TODO need to find out what reps does
                 let reps = 1;
@@ -318,6 +317,33 @@ pub trait RDSWriter: Write {
         self.write_item(&closure.body, &mut Some(reftable))?;
 
         Ok(())
+    }
+
+    fn write_langsxp(
+        &mut self,
+        lang: &lang::Lang,
+        _metadata: &MetaData,
+        refs: &mut Option<RefsTable>,
+    ) -> Ret {
+        let target: &lang::Target = &lang.target;
+        self.write_item(&target.into(), refs)?;
+        if lang.args.is_empty() {
+            self.write_item(&SexpKind::Nil.into(), refs)
+        } else {
+            self.write_listsxp(
+                &lang.args,
+                &MetaData::default(),
+                Flag {
+                    sexp_type: super::sexptype::LISTSXP,
+                    level: 0,
+                    has_attributes: false,
+                    has_tag: false,
+                    obj: false,
+                    orig: 0,
+                },
+                refs,
+            )
+        }
     }
 }
 

@@ -141,10 +141,19 @@ pub mod lang {
         }
     }
 
+    impl Into<super::Sexp> for &Target {
+        fn into(self) -> super::Sexp {
+            match self {
+                Target::Lang(x) => super::SexpKind::Lang(*x.clone()).into(),
+                Target::Sym(x) => super::SexpKind::Sym(x.clone()).into(),
+            }
+        }
+    }
+
     #[derive(Debug, PartialEq, Clone)]
     pub struct Lang {
-        pub(in crate::sexp) target: Target,
-        pub(in crate::sexp) args: super::data::List,
+        pub(crate) target: Target,
+        pub(crate) args: super::data::List,
     }
 
     impl Into<super::Sexp> for Lang {
