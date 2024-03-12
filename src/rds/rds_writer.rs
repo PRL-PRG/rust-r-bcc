@@ -119,9 +119,10 @@ pub trait RDSWriter: Write {
             // it is done this way because borrow checker
             Some(table) => {
                 if let SexpKind::Sym(_) = sexp.kind {
-                    let idx = table.add_ref(sexp.clone()) + 1;
-                    self.write_int((idx << 8) | super::sexptype::REFSXP as i32)?;
-                    return Ok(());
+                    if let Some(idx) = table.find(sexp.clone()) {
+                        self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
+                        return Ok(());
+                    }
                 }
             }
             _ => (),

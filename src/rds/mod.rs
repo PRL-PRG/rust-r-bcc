@@ -51,6 +51,14 @@ impl RefsTable {
         (self.data.len() - 1) as i32
     }
 
+    fn find(&mut self, data: Sexp) -> Option<i32> {
+        if let Some(idx) = self.data.iter().position(|x| x == &data) {
+            Some(idx as i32)
+        } else {
+            None
+        }
+    }
+
     fn get_ref(&mut self, index: i32) -> Option<Sexp> {
         if index < 0 || index > self.data.len() as i32 {
             None
