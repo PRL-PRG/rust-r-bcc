@@ -1,19 +1,62 @@
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, BufWriter, Cursor, Write};
 
 use self::rds_reader::RDSReader;
+use self::rds_writer::RDSWriter;
 
 use super::*;
 
 macro_rules! test_data {
-        ( $( $x:expr ),* $(,)?) => {
-            let data : Vec<u8> = vec![$($x,)*];
+    ( $( $x:expr ),* $(,)?) => {
+        let data : Vec<u8> = vec![$($x,)*];
 
-            let data = Cursor::new(data);
-            let mut reader = BufReader::new(data);
-            let RDSResult {header : _, data : res} = reader.read_rds().unwrap();
-            insta::assert_debug_snapshot!(res)
+        let data = Cursor::new(data);
+        let mut reader = BufReader::new(data);
+        let RDSResult {header, data : res} = reader.read_rds().unwrap();
+        insta::assert_debug_snapshot!(res);
+
+        let outdata: Vec<u8> = vec![];
+        let mut writer = BufWriter::new(outdata);
+        writer.write_rds(header, res).unwrap();
+        writer.flush().unwrap();
+
+        assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
+    }
+}
+
+macro_rules! test {
+    ( $name:ident, $( $x:expr ),* $(,)?) => {
+        mod $name {
+            use super::*;
+            #[test]
+            fn reader() {
+                let data : Vec<u8> = vec![$($x,)*];
+
+                let data = Cursor::new(data);
+                let mut reader = BufReader::new(data);
+                let RDSResult {header: _, data : res} = reader.read_rds().unwrap();
+                insta::assert_debug_snapshot!(res);
+            }
+
+            #[test]
+            fn writer() {
+                let indata: Vec<u8> = vec![$($x,)*];
+
+                let data = Cursor::new(indata);
+                let mut reader = BufReader::new(data);
+                let input = reader.read_rds().unwrap();
+
+                println!("{:?}", input.data);
+
+                let outdata: Vec<u8> = vec![];
+                let mut writer = BufWriter::new(outdata);
+                writer.write_rds(input.header, input.data).unwrap();
+                writer.flush().unwrap();
+
+                assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
+            }
         }
     }
+}
 
 #[test]
 fn test_header() {
@@ -50,6 +93,12 @@ fn test_intsxp() {
         0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
     ];
 }
+
+test![
+    intsxp, 0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
+    0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00,
+    0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
+];
 
 #[test]
 fn test_vecsxp() {

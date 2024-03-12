@@ -1,0 +1,16 @@
+---
+source: src/rds/tests.rs
+assertion_line: 97
+expression: res
+---
+Sexp {
+    kind: Int(
+        [
+            1,
+            2,
+        ],
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}
