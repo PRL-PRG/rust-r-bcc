@@ -20,12 +20,10 @@ impl MetaData {
             } = *attr
             {
                 list.into_iter().any(|x| {
-                    println!("{x:?}");
                     let x = match x.tag {
                         Some(x) if x.as_str() == "class" => true,
                         _ => false,
                     };
-                    println!("{x}");
                     x
                 })
             } else {
@@ -229,10 +227,10 @@ pub mod lang {
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct NormalEnv {
-        parent: Box<Environment>,
-        locked: bool,
-        frame: ListFrame,
-        hash_frame: HashFrame,
+        pub parent: Box<Environment>,
+        pub locked: bool,
+        pub frame: ListFrame,
+        pub hash_frame: HashFrame,
     }
 
     impl NormalEnv {
@@ -265,7 +263,7 @@ pub mod lang {
 
     #[derive(Debug, PartialEq, Clone, Default)]
     pub struct ListFrame {
-        data: Option<super::data::List>,
+        pub data: Option<super::data::List>,
     }
 
     impl ListFrame {
@@ -276,7 +274,7 @@ pub mod lang {
 
     #[derive(Debug, PartialEq, Clone, Default)]
     pub struct HashFrame {
-        data: Option<Vec<super::Sexp>>,
+        pub data: Option<Vec<super::Sexp>>,
     }
 
     impl HashFrame {

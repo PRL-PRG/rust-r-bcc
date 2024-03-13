@@ -72,10 +72,6 @@ pub trait RDSReader: Read {
         let mut buf: [u8; 4] = [0; 4];
         let len = self.read(&mut buf)?;
         if len != 4 {
-            println!(
-                "{:?}",
-                buf[0..len].into_iter().cloned().collect::<Vec<u8>>()
-            );
             return Err(RDSReaderError::DataError("Cannot read int".to_string()));
         }
         Ok(i32::from_be_bytes(buf))
@@ -149,7 +145,6 @@ pub trait RDSReader: Read {
         refs: &mut RefsTable,
         flag: Flag,
     ) -> Result<Sexp, RDSReaderError> {
-        //println!("flag : {:?}", flag.sexp_type);
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
@@ -430,8 +425,7 @@ pub trait RDSReader: Read {
             (SexpKind::Environment(environment), SexpKind::Nil) => {
                 Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
             }
-            x => {
-                println!("{x:?}");
+            _ => {
                 Err(RDSReaderError::DataError(
                     "Wrong format of the closure".into(),
                 ))

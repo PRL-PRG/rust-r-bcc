@@ -121,6 +121,8 @@ pub trait RDSWriter: Write {
                     if let Some(idx) = table.find(sexp.clone()) {
                         self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
                         return Ok(());
+                    } else {
+                        table.add_ref(sexp.clone());
                     }
                 }
             }
@@ -156,7 +158,7 @@ pub trait RDSWriter: Write {
                 self.write_int(reps)?;
                 self.write_int(super::sexptype::INTSXP as i32)?;
                 self.write_intvec(&bc.instructions)?;
-                self.write_bcconsts(&bc.constpool, &mut None)
+                self.write_bcconsts(&bc.constpool, refs)
             }
             SexpKind::Char(chars) => {
                 // lenght of the char vector is limited
@@ -189,17 +191,13 @@ pub trait RDSWriter: Write {
                 }
                 Ok(())
             }
-            SexpKind::Vec(items) => {
-                self.write_len(items.len())?;
-
-                for item in items {
-                    self.write_item(item, refs)?;
-                }
-                Ok(())
-            }
+            SexpKind::Vec(items) => self.write_vecsxp(items, refs),
             SexpKind::MissingArg => Ok(()),
         }?;
-        if flag.has_attributes {
+        if flag.has_attributes  
+            && flag.sexp_type != super::sexptype::REFSXP
+            && flag.sexp_type != super::sexptype::ENVSXP
+            && flag.sexp_type != super::sexptype::CLOSXP {
             let Some(attr) = sexp.metadata.attr.clone() else {
                 unreachable!()
             };
@@ -232,6 +230,15 @@ pub trait RDSWriter: Write {
                 self.write_int(flags.sexp_type as i32)?
             }
             self.write_item(c, refs)?;
+        }
+        Ok(())
+    }
+
+    fn write_vecsxp(&mut self, items: &Vec<Sexp>, refs: &mut Option<RefsTable>) -> Ret {
+        self.write_len(items.len())?;
+
+        for item in items {
+            self.write_item(item, refs)?;
         }
         Ok(())
     }
@@ -304,19 +311,24 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut Option<RefsTable>,
     ) -> Ret {
-        if let Some(attr) = &metadata.attr {
-            self.write_item(&attr, refs)?;
+        if refs.is_none() {
+            let reftable = RefsTable::default();
+            let mut reftable = Some(reftable);
+            if let Some(attr) = &metadata.attr {
+                self.write_item(&attr, &mut reftable)?;
+            }
+
+            self.write_item(&closure.environment.clone().into(), &mut reftable)?;
+            self.write_formals(&closure.formals, &mut reftable)?;
+            self.write_item(&closure.body, &mut reftable)?;
+        } else {
+            if let Some(attr) = &metadata.attr {
+                self.write_item(&attr, refs)?;
+            }
+            self.write_item(&closure.environment.clone().into(), refs)?;
+            self.write_formals(&closure.formals, refs)?;
+            self.write_item(&closure.body, refs)?;
         }
-
-        self.write_item(&closure.environment.clone().into(), refs)?;
-        self.write_formals(&closure.formals, refs)?;
-
-        let mut reftable = RefsTable::default();
-        for formal in closure.formals.iter() {
-            reftable.add_ref(formal.name.clone().into());
-        }
-
-        self.write_item(&closure.body, &mut Some(reftable))?;
 
         Ok(())
     }
@@ -354,7 +366,46 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut Option<RefsTable>,
     ) -> Ret {
-        todo!()
+        self.write_int(if env.locked { 1 } else { 0 })?;
+
+        match env.parent.as_ref() {
+            lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,
+            lang::Environment::Base => self.write_int(super::sexptype::BASEENV_SXP as i32)?,
+            lang::Environment::Empty => self.write_int(super::sexptype::EMPTYENV_SXP as i32)?,
+            lang::Environment::Normal(env) => {
+                self.write_int(super::sexptype::ENVSXP as i32)?;
+                self.write_envsxp(env, &MetaData::default(), refs)?
+            }
+        };
+
+        let tmp_flag = Flag {
+            sexp_type: super::sexptype::LISTSXP,
+            level: 0,
+            has_attributes: false,
+            has_tag: false,
+            obj: false,
+            orig: 0,
+        };
+
+        match env.frame.data.as_ref() {
+            Some(list) => self.write_listsxp(list, &MetaData::default(), tmp_flag, refs)?,
+            None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
+        };
+
+        match env.hash_frame.data.as_ref() {
+            Some(v) => {
+                self.write_int(super::sexptype::VECSXP as i32)?;
+                self.write_vecsxp(v, refs)?;
+            }
+            None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
+        };
+
+        match &metadata.attr {
+            Some(attr) => self.write_item(attr.as_ref(), refs)?,
+            None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
+        };
+
+        Ok(())
     }
 }
 
