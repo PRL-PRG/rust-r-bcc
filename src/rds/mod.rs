@@ -194,13 +194,27 @@ impl From<&Sexp> for Flag {
             Flag {
                 sexp_type,
                 level: str_fmt,
-                has_attributes: value.metadata.attr.is_some(),
-                has_tag: if let SexpKind::Closure(_) = value.kind {
+                has_attributes: if matches!(
+                    value.kind,
+                    SexpKind::Environment(lang::Environment::Normal(_))
+                ) {
+                    false
+                } else {
+                    value.metadata.attr.is_some()
+                },
+                has_tag: if matches!(value.kind, SexpKind::Closure(_)) {
                     true
                 } else {
                     false
                 },
-                obj: value.metadata.is_obj(),
+                obj: if matches!(
+                    value.kind,
+                    SexpKind::Environment(lang::Environment::Normal(_))
+                ) {
+                    false
+                } else {
+                    value.metadata.is_obj()
+                },
                 orig: 0,
             }
         }

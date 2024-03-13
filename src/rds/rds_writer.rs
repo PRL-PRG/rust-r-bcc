@@ -194,10 +194,11 @@ pub trait RDSWriter: Write {
             SexpKind::Vec(items) => self.write_vecsxp(items, refs),
             SexpKind::MissingArg => Ok(()),
         }?;
-        if flag.has_attributes  
+        if flag.has_attributes
             && flag.sexp_type != super::sexptype::REFSXP
             && flag.sexp_type != super::sexptype::ENVSXP
-            && flag.sexp_type != super::sexptype::CLOSXP {
+            && flag.sexp_type != super::sexptype::CLOSXP
+        {
             let Some(attr) = sexp.metadata.attr.clone() else {
                 unreachable!()
             };
@@ -367,6 +368,9 @@ pub trait RDSWriter: Write {
         refs: &mut Option<RefsTable>,
     ) -> Ret {
         self.write_int(if env.locked { 1 } else { 0 })?;
+
+        let Some(table) = refs else { unreachable!() };
+        table.add_ref(lang::Environment::Normal(env.clone()).into());
 
         match env.parent.as_ref() {
             lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,
