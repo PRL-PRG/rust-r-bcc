@@ -45,6 +45,7 @@ impl RefsTable {
         if let Some(idx) = self.data.iter().position(|x| x == &data) {
             return idx as i32;
         }
+        //println!("adding a ref {:?}\n", data);
         self.data.push(data);
         (self.data.len() - 1) as i32
     }
@@ -61,6 +62,7 @@ impl RefsTable {
         if index < 0 || index > self.data.len() as i32 {
             None
         } else {
+            println!("geting a ref {:?}\n", self.data[index as usize]);
             Some(self.data[index as usize].clone())
         }
     }

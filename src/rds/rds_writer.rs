@@ -355,8 +355,9 @@ pub trait RDSWriter: Write {
             lang::Environment::Base => self.write_int(super::sexptype::BASEENV_SXP as i32)?,
             lang::Environment::Empty => self.write_int(super::sexptype::EMPTYENV_SXP as i32)?,
             lang::Environment::Normal(env) => {
-                self.write_int(super::sexptype::ENVSXP as i32)?;
-                self.write_envsxp(env, &MetaData::default(), refs)?
+                self.write_item(&lang::Environment::Normal(env.clone()).into(), refs)?;
+                //self.write_int(super::sexptype::ENVSXP as i32)?;
+                //self.write_envsxp(env, &MetaData::default(), refs)?
             }
         };
 
