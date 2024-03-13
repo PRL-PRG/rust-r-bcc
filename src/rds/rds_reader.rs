@@ -33,6 +33,34 @@ impl From<std::string::FromUtf8Error> for RDSReaderError {
     }
 }
 
+impl TryInto<lang::HashFrame> for Sexp {
+    type Error = RDSReaderError;
+
+    fn try_into(self) -> Result<lang::HashFrame, Self::Error> {
+        match self.kind {
+            SexpKind::Vec(vec) => Ok(lang::HashFrame::new(vec)),
+            SexpKind::Nil => Ok(lang::HashFrame::default()),
+            _ => Err(RDSReaderError::DataError(
+                "Hash frame must be vector".into(),
+            )),
+        }
+    }
+}
+
+impl TryInto<lang::ListFrame> for Sexp {
+    type Error = RDSReaderError;
+
+    fn try_into(self) -> Result<lang::ListFrame, Self::Error> {
+        match self.kind {
+            SexpKind::List(list) => Ok(lang::ListFrame::new(list)),
+            SexpKind::Nil => Ok(lang::ListFrame::default()),
+            _ => Err(RDSReaderError::DataError(
+                "Hash frame must be vector".into(),
+            )),
+        }
+    }
+}
+
 pub trait RDSReader: Read {
     fn read_byte(&mut self) -> Result<u8, RDSReaderError> {
         let mut buf: [u8; 1] = [0];
@@ -48,7 +76,6 @@ pub trait RDSReader: Read {
                 "{:?}",
                 buf[0..len].into_iter().cloned().collect::<Vec<u8>>()
             );
-            panic!();
             return Err(RDSReaderError::DataError("Cannot read int".to_string()));
         }
         Ok(i32::from_be_bytes(buf))
@@ -431,7 +458,12 @@ pub trait RDSReader: Read {
 
         let res = match parent.kind {
             SexpKind::Environment(env) => {
-                let env = lang::NormalEnv::new(Box::new(env), locked == 1);
+                let env = lang::NormalEnv::new(
+                    Box::new(env),
+                    locked == 1,
+                    frame.try_into()?,
+                    hashtab.try_into()?,
+                );
                 let env: lang::Environment = env.into();
                 let env: SexpKind = env.into();
                 let mut env: Sexp = env.into();

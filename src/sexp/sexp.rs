@@ -231,17 +231,22 @@ pub mod lang {
     pub struct NormalEnv {
         parent: Box<Environment>,
         locked: bool,
-        frame: Frame,
-        hash_frame: Frame,
+        frame: ListFrame,
+        hash_frame: HashFrame,
     }
 
     impl NormalEnv {
-        pub fn new(parent: Box<Environment>, locked: bool) -> Self {
+        pub fn new(
+            parent: Box<Environment>,
+            locked: bool,
+            frame: ListFrame,
+            hash_frame: HashFrame,
+        ) -> Self {
             Self {
                 parent,
                 locked,
-                frame: Frame,
-                hash_frame: Frame,
+                frame,
+                hash_frame,
             }
         }
     }
@@ -258,9 +263,27 @@ pub mod lang {
         }
     }
 
-    // TODO
-    #[derive(Debug, PartialEq, Clone)]
-    struct Frame;
+    #[derive(Debug, PartialEq, Clone, Default)]
+    pub struct ListFrame {
+        data: Option<super::data::List>,
+    }
+
+    impl ListFrame {
+        pub fn new(data: super::data::List) -> Self {
+            Self { data: Some(data) }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Clone, Default)]
+    pub struct HashFrame {
+        data: Option<Vec<super::Sexp>>,
+    }
+
+    impl HashFrame {
+        pub fn new(data: Vec<super::Sexp>) -> Self {
+            Self { data: Some(data) }
+        }
+    }
 
     impl Into<super::SexpKind> for Environment {
         fn into(self) -> super::SexpKind {

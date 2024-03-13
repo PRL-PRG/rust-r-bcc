@@ -1,5 +1,5 @@
 ---
-source: src/rds/rds_reader.rs
+source: src/rds/tests.rs
 expression: res
 ---
 Sexp {
@@ -52,8 +52,45 @@ Sexp {
                                                                     NormalEnv {
                                                                         parent: Empty,
                                                                         locked: false,
-                                                                        frame: Frame,
-                                                                        hash_frame: Frame,
+                                                                        frame: ListFrame {
+                                                                            data: Some(
+                                                                                [
+                                                                                    TaggedSexp {
+                                                                                        tag: Some(
+                                                                                            "lines",
+                                                                                        ),
+                                                                                        data: Sexp {
+                                                                                            kind: Str(
+                                                                                                [
+                                                                                                    "saveRDS(function() NULL, file=\"tmp.dat\", compress=FALSE)\n",
+                                                                                                ],
+                                                                                            ),
+                                                                                            metadata: MetaData {
+                                                                                                attr: None,
+                                                                                            },
+                                                                                        },
+                                                                                    },
+                                                                                    TaggedSexp {
+                                                                                        tag: Some(
+                                                                                            "filename",
+                                                                                        ),
+                                                                                        data: Sexp {
+                                                                                            kind: Str(
+                                                                                                [
+                                                                                                    "",
+                                                                                                ],
+                                                                                            ),
+                                                                                            metadata: MetaData {
+                                                                                                attr: None,
+                                                                                            },
+                                                                                        },
+                                                                                    },
+                                                                                ],
+                                                                            ),
+                                                                        },
+                                                                        hash_frame: HashFrame {
+                                                                            data: None,
+                                                                        },
                                                                     },
                                                                 ),
                                                             ),

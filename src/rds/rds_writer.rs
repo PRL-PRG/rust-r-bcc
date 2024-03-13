@@ -68,7 +68,6 @@ pub trait RDSWriter: Write {
     }
 
     fn write_flags(&mut self, flags: Flag) -> Ret {
-        //println!("flag : {}", flags.sexp_type);
         let mut res: i32 = flags.sexp_type as i32;
         res |= flags.level << 12;
         if flags.has_attributes {
@@ -145,7 +144,9 @@ pub trait RDSWriter: Write {
             }
             SexpKind::Nil => Ok(()),
             SexpKind::Closure(closure) => self.write_closxp(closure, &sexp.metadata, refs),
-            SexpKind::Environment(lang::Environment::Normal(_)) => todo!(),
+            SexpKind::Environment(lang::Environment::Normal(env)) => {
+                self.write_envsxp(env, &sexp.metadata, refs)
+            }
             SexpKind::Environment(_) => Ok(()),
             SexpKind::Promise => todo!(),
             SexpKind::Lang(lang) => self.write_langsxp(lang, &sexp.metadata, refs),
@@ -238,7 +239,7 @@ pub trait RDSWriter: Write {
     fn write_listsxp(
         &mut self,
         list: &data::List,
-        metadata: &MetaData,
+        _metadata: &MetaData,
         flag: Flag,
         refs: &mut Option<RefsTable>,
     ) -> Ret {
@@ -345,6 +346,15 @@ pub trait RDSWriter: Write {
                 refs,
             )
         }
+    }
+
+    fn write_envsxp(
+        &mut self,
+        env: &lang::NormalEnv,
+        metadata: &MetaData,
+        refs: &mut Option<RefsTable>,
+    ) -> Ret {
+        todo!()
     }
 }
 
