@@ -1,7 +1,5 @@
 use crate::sexp::sexp::{lang, Sexp, SexpKind};
 
-use self::rds_reader::RDSReaderError;
-
 pub mod rds_reader;
 pub mod rds_writer;
 
