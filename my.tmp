@@ -1,2 +1,0 @@
-Sexp { kind: Closure(Closure { formals: [], body: Sexp { kind: Bc(Bc { instructions: [12, 17, 1], constpool: [Sexp { kind: Nil, metadata: MetaData { attr: None } }, Sexp { kind: Int([-2147483648, 0, 0]), metadata: MetaData { attr: Some(Sexp { kind: List([TaggedSexp { tag: Some("class"), data: Sexp { kind: Str(["expressionsIndex"]), metadata: MetaData { attr: None } } }]), metadata: MetaData { attr: None } }) } }] }), metadata: MetaData { attr: None } }, environment: Global }), metadata: MetaData { attr: None } }
-tmp : 13

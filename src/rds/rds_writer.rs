@@ -107,23 +107,17 @@ pub trait RDSWriter: Write {
 
     fn write_rds(&mut self, header: RDSHeader, sexp: Sexp) -> Ret {
         self.write_header(header)?;
-        self.write_item(&sexp, &mut None)?;
+        self.write_item(&sexp, &mut RefsTable::default())?;
         Ok(())
     }
 
-    fn write_item(&mut self, sexp: &Sexp, refs: &mut Option<RefsTable>) -> Ret {
+    fn write_item(&mut self, sexp: &Sexp, refs: &mut RefsTable) -> Ret {
         // when creating refs there are different rules for creating
         // flags so it must be done seperatelly
-        match refs {
-            // it is done this way because borrow checker
-            Some(table) => {
-                if let Some(idx) = table.find(sexp.clone()) {
-                    self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
-                    return Ok(());
-                }
-            }
-            _ => (),
-        };
+        if let Some(idx) = refs.find(sexp.clone()) {
+            self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
+            return Ok(());
+        }
 
         let flag: Flag = sexp.into();
         if flag.sexp_type != super::sexptype::LISTSXP {
@@ -132,9 +126,7 @@ pub trait RDSWriter: Write {
 
         match &sexp.kind {
             SexpKind::Sym(sym) => {
-                if let Some(table) = refs {
-                    table.add_ref(sexp.clone());
-                }
+                refs.add_ref(sexp.clone());
                 self.write_int(
                     super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                 )?;
@@ -217,7 +209,7 @@ pub trait RDSWriter: Write {
     // TODO implement more options for consts
     // but since I have only implemented reading
     // only for default I will do the same for writing
-    fn write_bcconsts(&mut self, consts: &Vec<Sexp>, refs: &mut Option<RefsTable>) -> Ret {
+    fn write_bcconsts(&mut self, consts: &Vec<Sexp>, refs: &mut RefsTable) -> Ret {
         self.write_int(consts.len() as i32)?;
         for c in consts {
             // here is the place that will
@@ -234,7 +226,7 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_vecsxp(&mut self, items: &Vec<Sexp>, refs: &mut Option<RefsTable>) -> Ret {
+    fn write_vecsxp(&mut self, items: &Vec<Sexp>, refs: &mut RefsTable) -> Ret {
         self.write_len(items.len())?;
 
         for item in items {
@@ -248,7 +240,7 @@ pub trait RDSWriter: Write {
         list: &data::List,
         _metadata: &MetaData,
         flag: Flag,
-        refs: &mut Option<RefsTable>,
+        refs: &mut RefsTable,
     ) -> Ret {
         let mut flag = flag;
         if list.is_empty() {
@@ -281,7 +273,7 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_formals(&mut self, formals: &Vec<lang::Formal>, refs: &mut Option<RefsTable>) -> Ret {
+    fn write_formals(&mut self, formals: &Vec<lang::Formal>, refs: &mut RefsTable) -> Ret {
         if formals.is_empty() {
             self.write_int(super::sexptype::NILVALUE_SXP as i32)
         } else {
@@ -309,26 +301,14 @@ pub trait RDSWriter: Write {
         &mut self,
         closure: &lang::Closure,
         metadata: &MetaData,
-        refs: &mut Option<RefsTable>,
+        refs: &mut RefsTable,
     ) -> Ret {
-        if refs.is_none() {
-            let reftable = RefsTable::default();
-            let mut reftable = Some(reftable);
-            if let Some(attr) = &metadata.attr {
-                self.write_item(&attr, &mut reftable)?;
-            }
-
-            self.write_item(&closure.environment.clone().into(), &mut reftable)?;
-            self.write_formals(&closure.formals, &mut reftable)?;
-            self.write_item(&closure.body, &mut reftable)?;
-        } else {
-            if let Some(attr) = &metadata.attr {
-                self.write_item(&attr, refs)?;
-            }
-            self.write_item(&closure.environment.clone().into(), refs)?;
-            self.write_formals(&closure.formals, refs)?;
-            self.write_item(&closure.body, refs)?;
+        if let Some(attr) = &metadata.attr {
+            self.write_item(&attr, refs)?;
         }
+        self.write_item(&closure.environment.clone().into(), refs)?;
+        self.write_formals(&closure.formals, refs)?;
+        self.write_item(&closure.body, refs)?;
 
         Ok(())
     }
@@ -337,7 +317,7 @@ pub trait RDSWriter: Write {
         &mut self,
         lang: &lang::Lang,
         _metadata: &MetaData,
-        refs: &mut Option<RefsTable>,
+        refs: &mut RefsTable,
     ) -> Ret {
         let target: &lang::Target = &lang.target;
         self.write_item(&target.into(), refs)?;
@@ -364,12 +344,11 @@ pub trait RDSWriter: Write {
         &mut self,
         env: &lang::NormalEnv,
         metadata: &MetaData,
-        refs: &mut Option<RefsTable>,
+        refs: &mut RefsTable,
     ) -> Ret {
         self.write_int(if env.locked { 1 } else { 0 })?;
 
-        let Some(table) = refs else { unreachable!() };
-        table.add_ref(lang::Environment::Normal(env.clone()).into());
+        refs.add_ref(lang::Environment::Normal(env.clone()).into());
 
         match env.parent.as_ref() {
             lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,
