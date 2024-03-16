@@ -114,7 +114,7 @@ pub trait RDSWriter: Write {
     fn write_item(&mut self, sexp: &Sexp, refs: &mut RefsTable) -> Ret {
         // when creating refs there are different rules for creating
         // flags so it must be done seperatelly
-        if let Some(idx) = refs.find(sexp.clone()) {
+        if let Some(idx) = refs.find(sexp) {
             self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
             return Ok(());
         }
@@ -126,7 +126,7 @@ pub trait RDSWriter: Write {
 
         match &sexp.kind {
             SexpKind::Sym(sym) => {
-                refs.add_ref(sexp.clone());
+                refs.add_ref(sexp);
                 self.write_int(
                     super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                 )?;
@@ -138,6 +138,7 @@ pub trait RDSWriter: Write {
             SexpKind::Nil => Ok(()),
             SexpKind::Closure(closure) => self.write_closxp(closure, &sexp.metadata, refs),
             SexpKind::Environment(lang::Environment::Normal(env)) => {
+                refs.add_ref(sexp);
                 self.write_envsxp(env, &sexp.metadata, refs)
             }
             SexpKind::Environment(_) => Ok(()),
@@ -347,8 +348,6 @@ pub trait RDSWriter: Write {
         refs: &mut RefsTable,
     ) -> Ret {
         self.write_int(if env.locked { 1 } else { 0 })?;
-
-        refs.add_ref(lang::Environment::Normal(env.clone()).into());
 
         match env.parent.as_ref() {
             lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,

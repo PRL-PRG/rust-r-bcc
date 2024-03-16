@@ -325,7 +325,7 @@ pub trait RDSReader: Read {
             )?))
             .into();
 
-            refs.add_ref(res.clone());
+            refs.add_ref(&res);
             return Ok(res);
         }
         Err(RDSReaderError::DataError(
