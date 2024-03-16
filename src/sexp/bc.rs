@@ -23,30 +23,6 @@ impl Bc {
         }
     }
 
-    pub fn add_instr(&mut self, op: BcOp) {
-        self.instructions.push(op.into());
-    }
-
-    pub fn add_instr2(&mut self, op: BcOp, idx: i32) {
-        self.instructions.push(op.into());
-        self.instructions.push(idx);
-    }
-
-    pub fn add_instr_n(&mut self, op: BcOp, idxs: &[i32]) {
-        self.instructions.push(op.into());
-        self.instructions.extend_from_slice(idxs);
-    }
-
-    pub fn add_const(&mut self, val: Sexp) -> i32 {
-        match self.constpool.iter().position(|x| x == &val) {
-            Some(idx) => idx as i32,
-            None => {
-                self.constpool.push(val);
-                (self.constpool.len() - 1) as i32
-            }
-        }
-    }
-
     // this is needed as a first instuction in bc
     fn version() -> i32 {
         12
