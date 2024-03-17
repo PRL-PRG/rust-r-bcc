@@ -32,7 +32,7 @@ impl CodeBuffer {
 
     fn insert_currexpr(&mut self, bc_count: usize) {
         if self.current_expr.is_some() {
-            let expr = std::mem::replace(&mut self.current_expr, None).unwrap();
+            let expr = self.current_expr.clone().unwrap();
             let index = self.add_const(expr.clone());
             self.expression_buffer
                 .append(&mut (0..bc_count).map(|_| index).collect());
@@ -95,10 +95,11 @@ impl Compiler {
 
     fn gen_code(self, target: Sexp) -> Bc {
         let mut tmp = self;
-        //tmp.code_buffer.add_const(target.clone());
         tmp.cmp(&target, false);
         tmp.code_buffer.add_const(Compiler::create_temp_loc());
-        tmp.code_buffer.bc
+        let tmp = tmp.code_buffer.bc;
+        println!("{tmp}");
+        tmp
     }
 
     fn cmp(&mut self, sexp: &Sexp, missing_ok: bool) {
@@ -108,14 +109,12 @@ impl Compiler {
             SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
             SexpKind::Environment(_) => todo!(),
             SexpKind::Promise => todo!(),
-            SexpKind::Lang(_) => todo!(),
+            SexpKind::Lang(lang) => self.cmp_lang(lang),
             _ => {
                 let ci = self.code_buffer.add_const(sexp.clone());
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
             }
         };
-
-        self.code_buffer.set_current_expr(sexp.clone());
 
         if self.context.tailcall {
             self.code_buffer.add_instr(BcOp::RETURN_OP);
@@ -141,6 +140,8 @@ impl Compiler {
     }
 
     fn cmp_lang(&mut self, call: &lang::Lang) {
+        let mut sexp_tmp = std::mem::take(&mut self.code_buffer.current_expr);
+        self.code_buffer.set_current_expr(call.clone().into());
         match &call.target {
             lang::Target::Lang(lang) => todo!(),
             lang::Target::Sym(sym) => {
@@ -154,6 +155,7 @@ impl Compiler {
                 }
             }
         };
+        std::mem::swap(&mut self.code_buffer.current_expr, &mut sexp_tmp);
     }
 
     fn cmp_args(&mut self, args: &data::List) {}
