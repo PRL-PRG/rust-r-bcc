@@ -90,8 +90,8 @@ pub mod data {
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct Complex {
-        real: f64,
-        imaginary: f64,
+        pub real: f64,
+        pub imaginary: f64,
     }
 
     pub type List = Vec<TaggedSexp>;

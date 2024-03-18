@@ -97,9 +97,7 @@ impl Compiler {
         let mut tmp = self;
         tmp.cmp(&target, false);
         tmp.code_buffer.add_const(Compiler::create_temp_loc());
-        let tmp = tmp.code_buffer.bc;
-        println!("{tmp}");
-        tmp
+        tmp.code_buffer.bc
     }
 
     fn cmp(&mut self, sexp: &Sexp, missing_ok: bool) {

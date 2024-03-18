@@ -8,7 +8,7 @@ use rds::{
 use crate::{
     compiler::compiler::Compiler,
     rds::RDSResult,
-    sexp::sexp::{Sexp, SexpKind},
+    sexp::sexp::Sexp,
 };
 
 mod compiler;
@@ -56,13 +56,13 @@ fn main() -> Result<(), MainError> {
 
     let compile = args[2] == "-c";
 
-    println!("{sexp:?}");
+    println!("{sexp}");
 
     match sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) if compile => {
             let compiler = Compiler::new();
             let bc = compiler.cmpfun(cl);
-            println!("{bc:?}");
+            println!("{bc}");
             let bc: Sexp = bc.into();
 
             let mut outfile = File::create("temp/compout.dat")?;
