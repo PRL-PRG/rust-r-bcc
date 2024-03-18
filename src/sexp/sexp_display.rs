@@ -4,21 +4,28 @@ use super::sexp::{data, lang, Sexp, SexpKind};
 
 impl Display for Sexp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.kind)?;
         if let Some(args) = &self.metadata.attr {
-            write!(f, " (args : {})", args)?;
+            write!(f, "(data : {}, args : {})", self.kind, args)?;
+        } else {
+            write!(f, "{}", self.kind)?;
         }
         Ok(())
     }
 }
 
-fn join_string<T>(data: &[T], sep: &str) -> String
+pub(super) fn join_string<T>(data: &[T], sep: &str) -> String
 where
     T: Display,
 {
-    data.iter().fold("".to_string(), |acc, x| {
-        acc.to_string() + " " + sep + x.to_string().as_str()
-    })
+    data.iter()
+        .fold(("".to_string(), true), |(acc, first), x| {
+            if first {
+                (x.to_string(), false)
+            } else {
+                (acc.to_string() + sep + " " + x.to_string().as_str(), false)
+            }
+        })
+        .0
 }
 
 impl Display for data::Complex {

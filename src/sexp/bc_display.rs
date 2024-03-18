@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
+use crate::sexp::sexp_display::join_string;
+
 use super::bc::{Bc, BcOp};
 
 impl Display for Bc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // instructions
         write!(f, "instruction : \n")?;
         let mut index: usize = 1;
         while index < self.instructions.len() {
@@ -17,6 +20,10 @@ impl Display for Bc {
             }
             write!(f, "\n")?
         }
+
+        // const pool
+        write!(f, "constant pool : {}", join_string(&self.constpool, ","))?;
+
         Ok(())
     }
 }
