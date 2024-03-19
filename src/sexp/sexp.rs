@@ -130,6 +130,18 @@ pub mod lang {
         Sym(Sym),        // named
     }
 
+    impl From<Sym> for Target {
+        fn from(value: Sym) -> Self {
+            Target::Sym(value)
+        }
+    }
+
+    impl From<Lang> for Target {
+        fn from(value: Lang) -> Self {
+            Target::Lang(Box::new(value))
+        }
+    }
+
     impl Into<super::Sexp> for Target {
         fn into(self) -> super::Sexp {
             match self {

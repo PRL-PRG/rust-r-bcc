@@ -425,11 +425,9 @@ pub trait RDSReader: Read {
             (SexpKind::Environment(environment), SexpKind::Nil) => {
                 Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
             }
-            _ => {
-                Err(RDSReaderError::DataError(
-                    "Wrong format of the closure".into(),
-                ))
-            }
+            _ => Err(RDSReaderError::DataError(
+                "Wrong format of the closure".into(),
+            )),
         }?;
 
         if let Some(attr) = attr {
@@ -490,8 +488,18 @@ pub trait RDSReader: Read {
 
     fn read_bc(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
         let reps = self.read_int()?;
+        let mut reps_vec = vec![];
+        reps_vec.resize(reps as usize, SexpKind::Nil.into());
+        self.read_bc_inner(refs, &mut reps_vec)
+    }
+
+    fn read_bc_inner(
+        &mut self,
+        refs: &mut RefsTable,
+        reps: &mut Vec<Sexp>,
+    ) -> Result<Sexp, RDSReaderError> {
         let code = self.read_item(refs)?;
-        let consts = self.read_bcconsts(refs)?;
+        let consts = self.read_bcconsts(refs, reps)?;
         match code.kind {
             SexpKind::Int(ints) => {
                 let bc = Bc::new_init(ints, consts);
@@ -501,7 +509,11 @@ pub trait RDSReader: Read {
         }
     }
 
-    fn read_bcconsts(&mut self, refs: &mut RefsTable) -> Result<Vec<Sexp>, RDSReaderError> {
+    fn read_bcconsts(
+        &mut self,
+        refs: &mut RefsTable,
+        reps: &mut Vec<Sexp>,
+    ) -> Result<Vec<Sexp>, RDSReaderError> {
         let n = self.read_int()?;
         let mut res = vec![];
         for _ in 0..n {
@@ -513,13 +525,13 @@ pub trait RDSReader: Read {
             }
             let type_val = type_val as u8;
             let tmp = match type_val {
-                sexptype::BCODESXP => todo!(),
+                sexptype::BCODESXP => self.read_bc_inner(refs, reps)?,
                 sexptype::LANGSXP
                 | sexptype::LISTSXP
                 | sexptype::BCREPDEF
                 | sexptype::BCREPREF
                 | sexptype::ATTRLANGSXP
-                | sexptype::ATTRLISTSXP => self.read_bclang(refs)?,
+                | sexptype::ATTRLISTSXP => self.read_bclang(type_val, refs, reps)?,
                 _ => self.read_item(refs)?,
             };
             res.push(tmp)
@@ -527,8 +539,96 @@ pub trait RDSReader: Read {
         Ok(res)
     }
 
-    fn read_bclang(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
-        todo!()
+    fn read_bclang(
+        &mut self,
+        type_val: u8,
+        refs: &mut RefsTable,
+        reps: &mut Vec<Sexp>,
+    ) -> Result<Sexp, RDSReaderError> {
+        match type_val {
+            sexptype::BCREPREF => Ok(reps[self.read_int()? as usize].clone()),
+            sexptype::BCREPDEF => {
+                let pos = self.read_int()?;
+                let type_val = self.read_int()?;
+                let res = self.read_bclang_inner(type_val as u8, refs, reps)?;
+
+                if pos >= 0 {
+                    reps[pos as usize] = res.clone();
+                }
+
+                Ok(res)
+            }
+            sexptype::LANGSXP
+            | sexptype::LISTSXP
+            | sexptype::ATTRLANGSXP
+            | sexptype::ATTRLISTSXP => self.read_bclang_inner(type_val, refs, reps),
+            _ => self.read_item(refs),
+        }
+    }
+
+    fn read_bclang_inner(
+        &mut self,
+        type_val: u8,
+        refs: &mut RefsTable,
+        reps: &mut Vec<Sexp>,
+    ) -> Result<Sexp, RDSReaderError> {
+        let (type_orig, has_attr) = match type_val {
+            sexptype::ATTRLANGSXP => (sexptype::LANGSXP, true),
+            sexptype::ATTRLISTSXP => (sexptype::LISTSXP, true),
+            _ => (type_val, false),
+        };
+
+        let attr = if has_attr {
+            Some(self.read_item(refs)?)
+        } else {
+            None
+        };
+        let tag = self.read_item(refs)?;
+
+        let tag = match tag.kind {
+            SexpKind::Sym(sym) => Ok(Some(sym.data)),
+            SexpKind::Nil => Ok(None),
+            _ => Err(RDSReaderError::DataError("Tag must be sym".into())),
+        }?;
+
+        let type_val = self.read_int()? as u8;
+        let car = self.read_bclang(type_val, refs, reps)?;
+
+        let type_val = self.read_int()? as u8;
+        let cdr = self.read_bclang(type_val, refs, reps)?;
+
+        let car: data::TaggedSexp = if let Some(tag) = tag {
+            data::TaggedSexp::new_with_tag(car, tag)
+        } else {
+            car.into()
+        };
+
+        let mut cdr = match cdr.kind {
+            SexpKind::Nil => Ok(vec![]),
+            SexpKind::List(cdr) => Ok(cdr),
+            _ => Err(RDSReaderError::DataError(format!(
+                "Wrong cdr type in bc lang read {type_val}"
+            ))),
+        }?;
+
+        match type_orig {
+            sexptype::LANGSXP => {
+                let target: lang::Target = match car.data.kind {
+                    SexpKind::Sym(sym) => Ok(sym.into()),
+                    SexpKind::Lang(lang) => Ok(lang.into()),
+                    _ => Err(RDSReaderError::DataError("Wrong lang target".into())),
+                }?;
+
+                Ok(lang::Lang::new(target, cdr).into())
+            }
+            sexptype::LISTSXP => {
+                cdr.insert(0, car);
+                Ok(SexpKind::List(cdr).into())
+            }
+            _ => Err(RDSReaderError::DataError(format!(
+                "Wrong sexp type in bc lang read {type_val}"
+            ))),
+        }
     }
 }
 
