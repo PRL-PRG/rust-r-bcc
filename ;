@@ -1,4 +1,7 @@
-use std::io::{BufWriter, Write};
+use std::{
+    collections::HashSet,
+    io::{BufWriter, Write},
+};
 
 use crate::sexp::{
     bc::Bc,
@@ -240,13 +243,8 @@ pub trait RDSWriter: Write {
                     self.write_int(sexptype::NILSXP as i32)?;
                     self.write_item(c, refs)?;
                 }
-                SexpKind::Bc(bc) => {
-                    self.write_int(sexptype::BCODESXP as i32)?;
-                    self.write_bc_inner(bc, refs, reps, reps_visit)?
-                }
-                SexpKind::Lang(lang) => {
-                    self.write_bclang(lang, &c.metadata, refs, reps, reps_visit)?
-                }
+                SexpKind::Bc(bc) => self.write_bc_inner(bc, refs, reps, reps_visit)?,
+                SexpKind::Lang(lang) => self.write_bclang(lang, refs, reps, reps_visit)?,
                 SexpKind::List(list) => {
                     self.write_bclist(list, &c.metadata, refs, reps, reps_visit)?
                 }
@@ -267,50 +265,7 @@ pub trait RDSWriter: Write {
         reps: &Vec<Sexp>,
         reps_visit: &mut Vec<bool>,
     ) -> Ret {
-        if let Some(pos) = reps
-            .iter()
-            .position(|x| x == &SexpKind::Lang(lang.clone()).into())
-        {
-            if reps_visit[pos] {
-                self.write_int(sexptype::BCREPREF as i32)?;
-                self.write_int(pos as i32 - 1)?;
-                return Ok(());
-            }
-
-            self.write_int(sexptype::BCREPDEF as i32)?;
-            self.write_int(pos as i32 - 1)?;
-            reps_visit[pos] = true;
-        }
-
-        let type_val = if metadata.attr.is_some() {
-            sexptype::ATTRLANGSXP
-        } else {
-            sexptype::LANGSXP
-        } as i32;
-
-        self.write_int(type_val)?;
-
-        if let Some(attr) = metadata.attr.as_ref() {
-            self.write_item(&attr, refs)?;
-        }
-
-        // write tag as nil since it does not ever exist here
-        self.write_int(sexptype::NILVALUE_SXP as i32)?;
-
-        match &lang.target {
-            lang::Target::Lang(lang) => {
-                self.write_bclang(lang.as_ref(), &MetaData::default(), refs, reps, reps_visit)?;
-            }
-            lang::Target::Sym(sym) => {
-                // padding dont ask why
-                self.write_int(0)?;
-                self.write_item(&sym.clone().into(), refs)?;
-            }
-        }
-
-        self.write_bclist(&lang.args, &MetaData::default(), refs, reps, reps_visit)?;
-
-        Ok(())
+        todo!()
     }
 
     fn write_bclist(
@@ -321,15 +276,6 @@ pub trait RDSWriter: Write {
         reps: &Vec<Sexp>,
         reps_visit: &mut Vec<bool>,
     ) -> Ret {
-        // special case for empty list
-        // it must behave as Nil
-        if list.is_empty() {
-            // padding
-            self.write_int(0)?;
-            self.write_int(sexptype::NILVALUE_SXP as i32)?;
-            return Ok(());
-        }
-
         if let Some(pos) = reps
             .iter()
             .position(|x| x == &SexpKind::List(list.clone()).into())
@@ -342,7 +288,6 @@ pub trait RDSWriter: Write {
 
             self.write_int(sexptype::BCREPDEF as i32)?;
             self.write_int(pos as i32)?;
-            reps_visit[pos] = true;
         }
 
         let type_val = if metadata.attr.is_some() {
@@ -357,14 +302,7 @@ pub trait RDSWriter: Write {
             self.write_item(&attr, refs)?;
         }
 
-        let mut first: bool = true;
-
         for item in list {
-            if first {
-                first = false;
-            } else {
-                self.write_int(sexptype::LISTSXP as i32)?;
-            }
             if let Some(tag) = &item.tag {
                 let tag: lang::Sym = tag.as_str().into();
                 let tag: Sexp = tag.into();
@@ -372,7 +310,6 @@ pub trait RDSWriter: Write {
             } else {
                 self.write_int(sexptype::NILVALUE_SXP as i32)?;
             }
-
             match &item.data.kind {
                 SexpKind::Lang(lang) => {
                     self.write_bclang(lang, &item.data.metadata, refs, reps, reps_visit)?;
@@ -384,9 +321,7 @@ pub trait RDSWriter: Write {
             }
         }
 
-        // last element of list is nil with padding
-        self.write_int(0)?;
-        self.write_int(sexptype::NILVALUE_SXP as i32)
+        Ok(())
     }
 
     fn write_vecsxp(&mut self, items: &Vec<Sexp>, refs: &mut RefsTable) -> Ret {
@@ -552,51 +487,39 @@ pub trait RDSWriter: Write {
 }
 
 fn create_reps(bc: &Bc, refs: &mut RefsTable) -> Vec<Sexp> {
-    let mut temp = vec![];
     let mut res = vec![SexpKind::Nil.into()];
     for c in &bc.constpool {
-        create_reps_inner(c, refs, &mut res, &mut temp);
+        create_reps_inner(c, refs, &mut res);
     }
     res
 }
 
-fn create_reps_inner(
-    sexp: &Sexp,
-    refs: &mut RefsTable,
-    reps: &mut Vec<Sexp>,
-    temp: &mut Vec<Sexp>,
-) {
-    if reps.iter().any(|x| x == sexp) {
-        return;
-    }
-
+fn create_reps_inner(sexp: &Sexp, refs: &mut RefsTable, reps: &mut Vec<Sexp>) {
     match &sexp.kind {
         SexpKind::List(list) => {
-            if temp.iter().any(|x| x == sexp) {
-                reps.push(sexp.clone());
+            if reps.iter().any(|x| x == sexp) {
                 return;
             }
 
-            temp.push(sexp.clone());
+            reps.push(sexp.clone());
 
             for item in list {
-                create_reps_inner(&item.data, refs, reps, temp);
+                create_reps_inner(&item.data, refs, reps);
             }
         }
         SexpKind::Lang(lang) => {
-            if temp.iter().any(|x| x == sexp) {
-                reps.push(sexp.clone());
+            if reps.iter().any(|x| x == sexp) {
                 return;
             }
 
-            temp.push(sexp.clone());
+            reps.push(sexp.clone());
 
-            create_reps_inner(&lang.target.clone().into(), refs, reps, temp);
-            create_reps_inner(&SexpKind::List(lang.args.clone()).into(), refs, reps, temp);
+            create_reps_inner(&lang.target.clone().into(), refs, reps);
+            create_reps_inner(&SexpKind::List(lang.args.clone()).into(), refs, reps);
         }
         SexpKind::Bc(bc) => {
             for c in &bc.constpool {
-                create_reps_inner(c, refs, reps, temp)
+                create_reps_inner(c, refs, reps)
             }
         }
         _ => (),

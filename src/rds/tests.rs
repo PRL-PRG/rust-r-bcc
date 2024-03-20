@@ -27,7 +27,7 @@ macro_rules! test {
                 let mut reader = BufReader::new(data);
                 let input = reader.read_rds().unwrap();
 
-                println!("{:?}", input.data);
+                println!("{}", input.data);
 
                 let outdata: Vec<u8> = vec![];
                 let mut writer = BufWriter::new(outdata);
