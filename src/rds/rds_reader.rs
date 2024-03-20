@@ -168,6 +168,7 @@ pub trait RDSReader: Read {
             sexptype::MISSINGARG_SXP => SexpKind::MissingArg.into(),
             sexptype::REFSXP => self.read_refsxp(refs, flag)?,
             sexptype::BCODESXP => self.read_bc(refs)?,
+            sexptype::LGLSXP => self.read_lglsxp()?,
             x => {
                 println!("{x}");
                 todo!()
@@ -254,6 +255,19 @@ pub trait RDSReader: Read {
         }
 
         Ok(SexpKind::Int(data).into())
+    }
+
+    fn read_lglsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let len = self.read_len()?;
+
+        let mut data = vec![];
+        data.reserve(len);
+
+        for _ in 0..len {
+            data.push(self.read_int()? != 0)
+        }
+
+        Ok(SexpKind::Logic(data).into())
     }
 
     fn read_vecsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {

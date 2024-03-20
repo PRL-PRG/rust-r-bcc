@@ -158,7 +158,14 @@ pub trait RDSWriter: Write {
 
                 Ok(())
             }
-            SexpKind::Logic(_) => todo!(),
+            SexpKind::Logic(logics) => {
+                self.write_len(logics.len())?;
+
+                for val in logics {
+                    self.write_int(if !val { 0 } else { 1 })?;
+                }
+                Ok(())
+            }
             SexpKind::Real(reals) => {
                 self.write_len(reals.len())?;
 
