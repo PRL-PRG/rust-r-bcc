@@ -2,7 +2,7 @@ use std::io::{BufWriter, Write};
 
 use crate::sexp::sexp::{data, lang, MetaData, Sexp, SexpKind};
 
-use super::{Flag, RDSHeader, RefsTable};
+use super::{sexptype, Flag, RDSHeader, RefsTable};
 
 #[derive(Debug)]
 pub enum RDSWriterError {
@@ -217,12 +217,19 @@ pub trait RDSWriter: Write {
             // for sure need to change to
             // allow more types
             let flags: Flag = c.into();
-            if flags.sexp_type == super::sexptype::NILVALUE_SXP {
-                self.write_int(super::sexptype::NILSXP as i32)?;
-            } else {
-                self.write_int(flags.sexp_type as i32)?
+            match flags.sexp_type {
+                sexptype::NILVALUE_SXP => {
+                    self.write_int(super::sexptype::NILSXP as i32)?;
+                    self.write_item(c, refs)?;
+                }
+                sexptype::BCODESXP => todo!(),
+                sexptype::LANGSXP => todo!(),
+                sexptype::LISTSXP => todo!(),
+                _ => {
+                    self.write_int(flags.sexp_type as i32)?;
+                    self.write_item(c, refs)?;
+                }
             }
-            self.write_item(c, refs)?;
         }
         Ok(())
     }
@@ -355,8 +362,6 @@ pub trait RDSWriter: Write {
             lang::Environment::Empty => self.write_int(super::sexptype::EMPTYENV_SXP as i32)?,
             lang::Environment::Normal(env) => {
                 self.write_item(&lang::Environment::Normal(env.clone()).into(), refs)?;
-                //self.write_int(super::sexptype::ENVSXP as i32)?;
-                //self.write_envsxp(env, &MetaData::default(), refs)?
             }
         };
 

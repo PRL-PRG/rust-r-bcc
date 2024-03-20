@@ -1,0 +1,111 @@
+---
+source: src/rds/tests.rs
+expression: res
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [
+                Formal {
+                    name: Sym {
+                        data: "f",
+                    },
+                    value: Sexp {
+                        kind: MissingArg,
+                        metadata: MetaData {
+                            attr: None,
+                        },
+                    },
+                },
+            ],
+            body: Sexp {
+                kind: Bc(
+                    Bc {
+                        instructions: [
+                            12,
+                            23,
+                            1,
+                            38,
+                            0,
+                            1,
+                        ],
+                        constpool: [
+                            Sexp {
+                                kind: Lang(
+                                    Lang {
+                                        target: Sym(
+                                            Sym {
+                                                data: "f",
+                                            },
+                                        ),
+                                        args: [],
+                                    },
+                                ),
+                                metadata: MetaData {
+                                    attr: None,
+                                },
+                            },
+                            Sexp {
+                                kind: Sym(
+                                    Sym {
+                                        data: "f",
+                                    },
+                                ),
+                                metadata: MetaData {
+                                    attr: None,
+                                },
+                            },
+                            Sexp {
+                                kind: Int(
+                                    [
+                                        -2147483648,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                    ],
+                                ),
+                                metadata: MetaData {
+                                    attr: Some(
+                                        Sexp {
+                                            kind: List(
+                                                [
+                                                    TaggedSexp {
+                                                        tag: Some(
+                                                            "class",
+                                                        ),
+                                                        data: Sexp {
+                                                            kind: Str(
+                                                                [
+                                                                    "expressionsIndex",
+                                                                ],
+                                                            ),
+                                                            metadata: MetaData {
+                                                                attr: None,
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            metadata: MetaData {
+                                                attr: None,
+                                            },
+                                        },
+                                    ),
+                                },
+                            },
+                        ],
+                    },
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}
