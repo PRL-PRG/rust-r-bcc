@@ -94,10 +94,11 @@ impl Compiler {
     }
 
     fn gen_code(&mut self, target: &Sexp) -> Bc {
+        let orig = std::mem::replace(&mut self.code_buffer, CodeBuffer::new());
         self.cmp(&target, false);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs);
-        std::mem::replace(&mut self.code_buffer.bc, Bc::new())
+        std::mem::replace(&mut self.code_buffer, orig).bc
     }
 
     fn cmp(&mut self, sexp: &Sexp, missing_ok: bool) {
@@ -167,7 +168,7 @@ impl Compiler {
                     let code = self.gen_code(&arg.data);
                     let index = self.code_buffer.add_const(code.into());
                     self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
-                },
+                }
                 SexpKind::Nil => {
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
                     self.cmp_tag(&arg.tag);
