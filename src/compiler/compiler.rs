@@ -86,18 +86,18 @@ impl Compiler {
         }
     }
 
-    pub fn cmpfun(self, closure: lang::Closure) -> lang::Closure {
+    pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
         let mut closure = closure;
-        let body = SexpKind::Bc(self.gen_code(*closure.body)).into();
+        let body = SexpKind::Bc(self.gen_code(closure.body.as_ref())).into();
         closure.body = Box::new(body);
         closure
     }
 
-    fn gen_code(self, target: Sexp) -> Bc {
-        let mut tmp = self;
-        tmp.cmp(&target, false);
-        tmp.code_buffer.add_const(Compiler::create_temp_loc());
-        tmp.code_buffer.bc
+    fn gen_code(&mut self, target: &Sexp) -> Bc {
+        self.cmp(&target, false);
+        let locs = self.create_expression_loc();
+        self.code_buffer.add_const(locs);
+        std::mem::replace(&mut self.code_buffer.bc, Bc::new())
     }
 
     fn cmp(&mut self, sexp: &Sexp, missing_ok: bool) {
@@ -156,33 +156,50 @@ impl Compiler {
         std::mem::swap(&mut self.code_buffer.current_expr, &mut sexp_tmp);
     }
 
-    fn cmp_args(&mut self, args: &data::List) {}
+    fn cmp_args(&mut self, args: &data::List) {
+        for arg in args {
+            match &arg.data.kind {
+                SexpKind::MissingArg => todo!(),
+                SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
+                SexpKind::Bc(_) => todo!(),
+                SexpKind::Promise => todo!(),
+                SexpKind::Sym(_) | SexpKind::Lang(_) => {
+                    let code = self.gen_code(&arg.data);
+                    let index = self.code_buffer.add_const(code.into());
+                    self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
+                },
+                SexpKind::Nil => {
+                    self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                SexpKind::Logic(logs) if logs.len() == 1 && logs[0] => {
+                    self.code_buffer.add_instr(BcOp::PUSHTRUEARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                SexpKind::Logic(logs) if logs.len() == 1 && !logs[0] => {
+                    self.code_buffer.add_instr(BcOp::PUSHFALSEARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                _ => {
+                    let index = self.code_buffer.add_const(arg.data.clone());
+                    self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
+                }
+            }
+        }
+    }
+
+    fn cmp_tag(&mut self, tag: &Option<String>) {
+        if let Some(tag) = tag {
+            let tag: lang::Sym = tag.as_str().into();
+            let tag: Sexp = tag.into();
+            let index = self.code_buffer.add_const(tag);
+            self.code_buffer.add_instr2(BcOp::SETTAG_OP, index);
+        }
+    }
 
     // TODO
     fn var_exist(&self) -> bool {
         true
-    }
-
-    // TODO create real source tracking
-    // this is only for time being so i could
-    // create some compiled code
-    fn create_temp_loc() -> Sexp {
-        let loc_temp: Sexp = Sexp {
-            kind: SexpKind::Int(vec![-2147483648, 0, 0]),
-            metadata: MetaData {
-                attr: Some(Box::new(Sexp {
-                    kind: SexpKind::List(vec![data::TaggedSexp {
-                        tag: Some("class".into()),
-                        data: Sexp {
-                            kind: SexpKind::Str(vec!["expressionsIndex".into()]),
-                            metadata: MetaData { attr: None },
-                        },
-                    }]),
-                    metadata: MetaData { attr: None },
-                })),
-            },
-        };
-        loc_temp
     }
 
     fn create_expression_loc(&mut self) -> Sexp {
@@ -264,7 +281,7 @@ mod tests {
             panic!("Source must be closure");
         };
 
-        let compiler = Compiler::new();
+        let mut compiler = Compiler::new();
 
         let bc = compiler.cmpfun(source);
 

@@ -60,7 +60,7 @@ fn main() -> Result<(), MainError> {
 
     match sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) if compile => {
-            let compiler = Compiler::new();
+            let mut compiler = Compiler::new();
             let bc = compiler.cmpfun(cl);
             println!("{bc}");
             let bc: Sexp = bc.into();

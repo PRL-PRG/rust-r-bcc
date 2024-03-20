@@ -1,9 +1,15 @@
-use super::sexp::Sexp;
+use super::sexp::{Sexp, SexpKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bc {
     pub instructions: Vec<i32>,
     pub constpool: Vec<Sexp>,
+}
+
+impl Into<Sexp> for Bc {
+    fn into(self) -> Sexp {
+        SexpKind::Bc(self).into()
+    }
 }
 
 impl Bc {
