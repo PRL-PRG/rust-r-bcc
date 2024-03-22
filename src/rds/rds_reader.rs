@@ -165,6 +165,10 @@ pub trait RDSReader: Read {
                 let tmp: SexpKind = lang::Environment::Empty.into();
                 tmp.into()
             }
+            sexptype::BASEENV_SXP => {
+                let tmp: SexpKind = lang::Environment::Base.into();
+                tmp.into()
+            }
             sexptype::MISSINGARG_SXP => SexpKind::MissingArg.into(),
             sexptype::REFSXP => self.read_refsxp(refs, flag)?,
             sexptype::BCODESXP => self.read_bc(refs)?,
