@@ -3,13 +3,27 @@ use crate::sexp::{
     sexp::{data, lang, MetaData, Sexp, SexpKind},
 };
 
+#[derive(Default, Clone, Copy)]
 struct CompilerContext {
+    top_level: bool,
     tailcall: bool,
 }
 
 impl CompilerContext {
-    fn new_top() -> Self {
-        Self { tailcall: true }
+    fn new_top(ctxt: &CompilerContext) -> Self {
+        Self {
+            top_level: true,
+            tailcall: true,
+            ..ctxt.clone()
+        }
+    }
+
+    fn new_promise(ctxt: &CompilerContext) -> Self {
+        Self {
+            top_level: false,
+            tailcall: true,
+            ..ctxt.clone()
+        }
     }
 }
 
@@ -40,17 +54,20 @@ impl CodeBuffer {
     }
 
     fn add_instr(&mut self, op: BcOp) {
+        assert_eq!(op.arity(), 0, "Wrong arity");
         self.bc.instructions.push(op.into());
         self.insert_currexpr(1);
     }
 
     fn add_instr2(&mut self, op: BcOp, idx: i32) {
+        assert_eq!(op.arity(), 1, "Wrong arity");
         self.bc.instructions.push(op.into());
         self.bc.instructions.push(idx);
         self.insert_currexpr(2);
     }
 
     fn add_instr_n(&mut self, op: BcOp, idxs: &[i32]) {
+        assert_eq!(op.arity(), idxs.len(), "Wrong arity");
         self.bc.instructions.push(op.into());
         self.bc.instructions.extend_from_slice(idxs);
         self.insert_currexpr(1 + idxs.len());
@@ -81,7 +98,7 @@ impl Compiler {
     pub fn new() -> Self {
         Self {
             options: CompilerOptions,
-            context: CompilerContext::new_top(),
+            context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
         }
     }
