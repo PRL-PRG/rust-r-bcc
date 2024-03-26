@@ -145,6 +145,7 @@ impl Compiler {
 
     fn gen_code(&mut self, target: &Sexp) -> Bc {
         let orig = std::mem::replace(&mut self.code_buffer, CodeBuffer::new());
+        self.code_buffer.add_const(target.clone());
         self.cmp(&target, false);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs);
@@ -155,19 +156,25 @@ impl Compiler {
         self.code_buffer.set_current_expr(sexp.clone());
         match &sexp.kind {
             SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
-            SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
+            SexpKind::Nil => {
+                self.code_buffer.add_instr(BcOp::LDNULL_OP);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+            }
             SexpKind::Environment(_) => todo!(),
             SexpKind::Promise => todo!(),
             SexpKind::Lang(lang) => self.cmp_lang(lang),
             _ => {
                 let ci = self.code_buffer.add_const(sexp.clone());
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
             }
         };
-
-        if self.context.tailcall {
-            self.code_buffer.add_instr(BcOp::RETURN_OP);
-        }
     }
 
     fn cmp_sym(&mut self, sym: &lang::Sym, missing_ok: bool) {
@@ -187,13 +194,16 @@ impl Compiler {
                 }
             }
         }
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
     }
 
     fn cmp_lang(&mut self, call: &lang::Lang) {
         let mut sexp_tmp = std::mem::take(&mut self.code_buffer.current_expr);
         self.code_buffer.set_current_expr(call.clone().into());
         match &call.target {
-            lang::Target::Lang(lang) => todo!(),
+            lang::Target::Lang(_) => todo!(),
             lang::Target::Sym(sym) => {
                 let index = self.code_buffer.add_const(sym.clone().into());
                 self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
@@ -277,65 +287,79 @@ pub struct CompilerOptions;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufReader, Cursor};
+    use std::io::{BufWriter, Read, Write};
 
-    use crate::rds::{rds_reader::RDSReader, RDSResult};
+    use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
 
-    #[test]
-    fn test_basic() {
-        let bc_corr: Vec<u8> = vec![
-            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
-            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x04, 0x03, 0x00,
-            0x00, 0x00, 0xfd, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00,
-            0x01, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0c, 0x00,
-            0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x03, 0x0d, 0x00,
-            0x00, 0x00, 0x03, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00,
-            0x00, 0x00, 0x05, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
-            0x00, 0x01, 0x00, 0x04, 0x00, 0x09, 0x00, 0x00, 0x00, 0x10, 0x65, 0x78, 0x70, 0x72,
-            0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x49, 0x6e, 0x64, 0x65, 0x78, 0x00, 0x00,
-            0x00, 0xfe,
-        ];
+    macro_rules! test_fun_noopt {
+        ( $name:ident, $code:expr) => {
+            mod $name {
+                use super::*;
 
-        let bc_corr = Cursor::new(bc_corr);
-        let mut reader = BufReader::new(bc_corr);
-        let RDSResult {
-            header: _,
-            data: bc_correct,
-        } = reader.read_rds().unwrap();
-        let Sexp {
-            kind: SexpKind::Closure(bc_correct),
-            ..
-        } = bc_correct
-        else {
-            panic!("This is not bc");
+                #[test]
+                fn compiler() {
+                    let path = format!("temp/{}_compiler.dat", stringify!($name));
+                    let path = path.as_str();
+                    let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
+                    let path_comp = path_comp.as_str();
+                    let mut command = std::process::Command::new("./create_serdata.R")
+                        .args(["-d", $code, path])
+                        .spawn()
+                        .unwrap();
+                    assert!(command.wait().unwrap().success());
+                    let mut command = std::process::Command::new("./create_serdata.R")
+                        .args([
+                            "-d",
+                            format!("compiler::cmpfun({}, options=list(optimize=0))", $code)
+                                .as_str(),
+                            path_comp,
+                        ])
+                        .spawn()
+                        .unwrap();
+                    assert!(command.wait().unwrap().success());
+
+                    let mut file = std::fs::File::open(path).unwrap();
+                    let RDSResult {
+                        header,
+                        data: input,
+                    } = file.read_rds().unwrap();
+
+                    let mut input_vec = vec![];
+                    let mut file = std::fs::File::open(path_comp).unwrap();
+                    file.read_to_end(&mut input_vec).unwrap();
+
+                    let mut file = std::fs::File::open(path_comp).unwrap();
+                    let RDSResult {
+                        header: _,
+                        data: correct,
+                    } = file.read_rds().unwrap();
+
+                    println!("{}", input);
+
+                    let mut compiler = Compiler::new();
+                    let SexpKind::Closure(cl) = input.kind else {
+                        unreachable!();
+                    };
+                    let bc = compiler.cmpfun(cl);
+                    let input: Sexp = bc.into();
+
+                    println!("My compilation:\n{input}\n");
+                    println!("Correct compilation:\n{correct}");
+
+                    let outdata: Vec<u8> = vec![];
+                    let mut writer = BufWriter::new(outdata);
+                    writer.write_rds(header, input).unwrap();
+                    writer.flush().unwrap();
+
+                    assert_eq!(writer.get_ref(), &input_vec);
+                    std::fs::remove_file(path).unwrap();
+                    std::fs::remove_file(path_comp).unwrap();
+                }
+            }
         };
-
-        let source: Vec<u8> = vec![
-            0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00,
-            0x00, 0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x04, 0x03, 0x00,
-            0x00, 0x00, 0xfd, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe,
-        ];
-
-        let source = Cursor::new(source);
-        let mut reader = BufReader::new(source);
-        let RDSResult {
-            header: _,
-            data: source,
-        } = reader.read_rds().unwrap();
-        let Sexp {
-            kind: SexpKind::Closure(source),
-            ..
-        } = source
-        else {
-            panic!("Source must be closure");
-        };
-
-        let mut compiler = Compiler::new();
-
-        let bc = compiler.cmpfun(source);
-
-        assert_eq!(bc, bc_correct);
     }
+
+    test_fun_noopt![basic, "function() NULL"];
+    test_fun_noopt![identity, "function(x) x"];
+    test_fun_noopt![addition, "function(x, y) x + y"];
 }
