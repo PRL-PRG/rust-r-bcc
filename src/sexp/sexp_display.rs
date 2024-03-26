@@ -22,7 +22,7 @@ where
             if first {
                 (x.to_string(), false)
             } else {
-                (acc.to_string() + sep + " " + x.to_string().as_str(), false)
+                (acc.to_string() + sep + x.to_string().as_str(), false)
             }
         })
         .0
@@ -38,18 +38,18 @@ impl Display for SexpKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SexpKind::Sym(sym) => write!(f, "{}", sym),
-            SexpKind::List(data) => write!(f, "[{}]", join_string(data, ",")),
+            SexpKind::List(data) => write!(f, "list: [{}]", join_string(data, ", ")),
             SexpKind::Nil => write!(f, "nil"),
             SexpKind::Closure(closure) => write!(f, "{closure}"),
-            SexpKind::Environment(env) => write!(f, "{env}"),
+            SexpKind::Environment(env) => write!(f, "env: ({env})"),
             SexpKind::Promise => todo!(),
             SexpKind::Lang(lang) => write!(f, "{lang}"),
-            SexpKind::Char(chars) => write!(f, "[{}]", join_string(chars, ",")),
-            SexpKind::Logic(logs) => write!(f, "[{}]", join_string(logs, ",")),
-            SexpKind::Real(reals) => write!(f, "[{}]", join_string(reals, ",")),
-            SexpKind::Int(ints) => write!(f, "[{}]", join_string(ints, ",")),
-            SexpKind::Complex(cmplx) => write!(f, "[{}]", join_string(cmplx, ",")),
-            SexpKind::Str(strs) => write!(f, "[{}]", join_string(strs, ",")),
+            SexpKind::Char(chars) => write!(f, "'{}'", join_string(chars, "")),
+            SexpKind::Logic(logs) => write!(f, "[{}]", join_string(logs, ", ")),
+            SexpKind::Real(reals) => write!(f, "[{}]", join_string(reals, ", ")),
+            SexpKind::Int(ints) => write!(f, "[{}]", join_string(ints, ", ")),
+            SexpKind::Complex(cmplx) => write!(f, "[{}]", join_string(cmplx, ", ")),
+            SexpKind::Str(strs) => write!(f, "['{}']", join_string(strs, ", ")),
             SexpKind::Vec(data) => {
                 if data.is_empty() {
                     write!(f, "[]")
@@ -63,13 +63,15 @@ impl Display for SexpKind {
             }
             SexpKind::MissingArg => write!(f, "missing"),
             SexpKind::Bc(bc) => write!(f, "{bc}"),
+            SexpKind::BaseNamespace => write!(f, "base namespace"),
+            SexpKind::Buildin(sym) => write!(f, "{sym}"),
         }
     }
 }
 
 impl Display for lang::Lang {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}({})", self.target, join_string(&self.args, ","))
+        write!(f, "{}({})", self.target, join_string(&self.args, ", "))
     }
 }
 
@@ -112,11 +114,11 @@ impl Display for lang::NormalEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "parent : {}", self.parent)?;
         if let Some(frame) = &self.frame.data {
-            write!(f, ", frame : {}", join_string(frame, ","))?;
+            write!(f, ", frame : {}", join_string(frame, ", "))?;
         }
 
         if let Some(hash_frame) = &self.hash_frame.data {
-            write!(f, ", hash frame : {}", join_string(hash_frame, ","))?;
+            write!(f, ", hash frame : {}", join_string(hash_frame, ", "))?;
         }
 
         Ok(())
@@ -138,7 +140,7 @@ impl Display for lang::Formal {
 
 impl Display for lang::Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "function({})\n", join_string(&self.formals, ","))?;
+        write!(f, "function({})\n", join_string(&self.formals, ", "))?;
         write!(f, "{}\n", self.body)?;
         write!(f, "(env : {})", self.environment)
     }

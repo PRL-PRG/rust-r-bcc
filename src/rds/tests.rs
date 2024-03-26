@@ -1,4 +1,4 @@
-use std::io::{BufReader, BufWriter, Cursor, Write};
+use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 
 use self::rds_reader::RDSReader;
 use self::rds_writer::RDSWriter;
@@ -327,8 +327,73 @@ test![
     0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 
 ];
 
+// empty hash environment
+test![
+    hashenv_01, 0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x03, 0x00, 0x03, 0x05, 0x00, 0x00,
+    0x00, 0x00, 0x05, 0x55, 0x54, 0x46, 0x2d, 0x38, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xfd, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00,
+    0x00, 0x1d, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00,
+    0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe,
+    0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00,
+    0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00,
+    0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00,
+    0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe,
+    0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00,
+    0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00, 0x00, 0xfe, 0x00, 0x00,
+    0x00, 0xfe, 
+];
 
-#[test]
-fn test_rcreation() {
-    
+macro_rules! testR {
+    ( $name:ident, $code:expr) => {
+        mod $name {
+            use super::*;
+            #[test]
+            fn reader() {
+                let path = format!("temp/{}.dat", stringify!($name));
+                let path = path.as_str();
+                let mut command = std::process::Command::new("./create_serdata.R")
+                    .args(["-d", $code, path]).spawn().unwrap();
+                assert!(command.wait().unwrap().success());
+
+                let mut file = std::fs::File::open(path).unwrap();
+                let RDSResult { header: _, data } = file.read_rds().unwrap();
+
+                insta::assert_debug_snapshot!(data);
+                std::fs::remove_file(path).unwrap();
+            }
+
+            #[test]
+            fn writer() {
+                let path = format!("temp/{}_writer.dat", stringify!($name));
+                let path = path.as_str();
+                let mut command = std::process::Command::new("./create_serdata.R")
+                    .args(["-d", $code, path]).spawn().unwrap();
+                assert!(command.wait().unwrap().success());
+            
+                let mut file = std::fs::File::open(path).unwrap();
+                let RDSResult { header, data : input } = file.read_rds().unwrap();
+
+                let mut input_vec = vec![];
+                let mut file = std::fs::File::open(path).unwrap();
+                file.read_to_end(&mut input_vec).unwrap();
+
+                println!("{}", input);
+
+                let outdata: Vec<u8> = vec![];
+                let mut writer = BufWriter::new(outdata);
+                writer.write_rds(header, input).unwrap();
+                writer.flush().unwrap();
+
+                assert_eq!(writer.get_ref(), &input_vec);
+                std::fs::remove_file(path).unwrap();
+            }
+        }
+    }
 }
+
+testR![intsxp_02, "as.integer(c(1, 2))"];
+testR![intsxp_03, "as.integer(c(1, 2, 3))"];
+testR![strsxp_01, "'a'"];
+testR![strsxp_02, "c('a', 'ahoj')"];
+testR![closxp05, "function(a, b = 0) {x <- c(a, 1); x[[b]];}"];
+testR![bcsxp_01, "compiler::cmpfun(function(a, b = 0) {x <- c(a, 1); x[[b]];})"];

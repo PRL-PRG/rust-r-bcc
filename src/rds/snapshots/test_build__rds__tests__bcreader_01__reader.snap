@@ -49,45 +49,8 @@ Sexp {
                                                                     NormalEnv {
                                                                         parent: Empty,
                                                                         locked: false,
-                                                                        frame: ListFrame {
-                                                                            data: Some(
-                                                                                [
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "lines",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "fc <- compiler::cmpfun(function() NULL)\n",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
-                                                                                        },
-                                                                                    },
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "filename",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
-                                                                                        },
-                                                                                    },
-                                                                                ],
-                                                                            ),
-                                                                        },
-                                                                        hash_frame: HashFrame {
-                                                                            data: None,
-                                                                        },
+                                                                        frame: Some([TaggedSexp { tag: Some("lines"), data: Sexp { kind: Str(["fc <- compiler::cmpfun(function() NULL)\n"]), metadata: MetaData { attr: None } } }, TaggedSexp { tag: Some("filename"), data: Sexp { kind: Str([""]), metadata: MetaData { attr: None } } }]),
+                                                                        hash_frame: None,
                                                                     },
                                                                 ),
                                                             ),
@@ -267,45 +230,8 @@ Sexp {
                                                                     NormalEnv {
                                                                         parent: Empty,
                                                                         locked: false,
-                                                                        frame: ListFrame {
-                                                                            data: Some(
-                                                                                [
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "lines",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "fc <- compiler::cmpfun(function() NULL)\n",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
-                                                                                        },
-                                                                                    },
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "filename",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
-                                                                                        },
-                                                                                    },
-                                                                                ],
-                                                                            ),
-                                                                        },
-                                                                        hash_frame: HashFrame {
-                                                                            data: None,
-                                                                        },
+                                                                        frame: Some([TaggedSexp { tag: Some("lines"), data: Sexp { kind: Str(["fc <- compiler::cmpfun(function() NULL)\n"]), metadata: MetaData { attr: None } } }, TaggedSexp { tag: Some("filename"), data: Sexp { kind: Str([""]), metadata: MetaData { attr: None } } }]),
+                                                                        hash_frame: None,
                                                                     },
                                                                 ),
                                                             ),

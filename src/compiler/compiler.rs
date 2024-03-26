@@ -29,6 +29,11 @@ impl CompilerContext {
 
 const NA: i32 = i32::MIN;
 
+#[derive(Debug)]
+pub enum Warning {
+    VariableDoesNotExist(String),
+}
+
 struct CodeBuffer {
     bc: Bc,
     current_expr: Option<Sexp>,
@@ -92,6 +97,9 @@ pub struct Compiler {
     options: CompilerOptions,
     context: CompilerContext,
     code_buffer: CodeBuffer,
+
+    environment: lang::Environment,
+    pub warnings: Vec<Warning>,
 }
 
 impl Compiler {
@@ -100,13 +108,38 @@ impl Compiler {
             options: CompilerOptions,
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
+
+            environment: lang::Environment::Global,
+            warnings: vec![],
         }
     }
 
     pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
         let mut closure = closure;
+        self.environment = lang::NormalEnv::new(
+            Box::new(closure.environment),
+            false,
+            lang::ListFrame::new(
+                closure
+                    .formals
+                    .iter()
+                    .map(|x| {
+                        data::TaggedSexp::new_with_tag(
+                            x.value.as_ref().clone(),
+                            x.name.data.clone(),
+                        )
+                    })
+                    .collect(),
+            ),
+            lang::HashFrame::new(vec![]),
+        )
+        .into();
         let body = SexpKind::Bc(self.gen_code(closure.body.as_ref())).into();
         closure.body = Box::new(body);
+        let lang::Environment::Normal(env) = &mut self.environment else {
+            unreachable!()
+        };
+        closure.environment = std::mem::replace(env.parent.as_mut(), lang::Environment::Global);
         closure
     }
 
@@ -141,9 +174,10 @@ impl Compiler {
         match sym.data.as_str() {
             ".." => todo!(),
             name if name.starts_with("..") => todo!(),
-            _ => {
-                if !self.var_exist() {
-                    todo!()
+            name => {
+                if !self.var_exist(name) {
+                    self.warnings
+                        .push(Warning::VariableDoesNotExist(name.to_string()))
                 }
                 let index = self.code_buffer.add_const(sym.clone().into());
                 if missing_ok {
@@ -215,9 +249,8 @@ impl Compiler {
         }
     }
 
-    // TODO
-    fn var_exist(&self) -> bool {
-        true
+    fn var_exist(&self, name: &str) -> bool {
+        self.environment.find_local_var(name).is_some()
     }
 
     fn create_expression_loc(&mut self) -> Sexp {

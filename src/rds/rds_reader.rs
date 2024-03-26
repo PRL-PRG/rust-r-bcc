@@ -165,7 +165,7 @@ pub trait RDSReader: Read {
                 let tmp: SexpKind = lang::Environment::Empty.into();
                 tmp.into()
             }
-            sexptype::BASEENV_SXP => {
+            sexptype::BASEENV_SXP | sexptype::BASENAMESPACE_SXP => {
                 let tmp: SexpKind = lang::Environment::Base.into();
                 tmp.into()
             }
@@ -173,6 +173,12 @@ pub trait RDSReader: Read {
             sexptype::REFSXP => self.read_refsxp(refs, flag)?,
             sexptype::BCODESXP => self.read_bc(refs)?,
             sexptype::LGLSXP => self.read_lglsxp()?,
+            sexptype::BUILTINSXP | sexptype::SPECIALSXP => {
+                let len = self.read_int()?;
+                let name = self.read_string_len(len)?;
+                SexpKind::Buildin(name.as_str().into()).into()
+            }
+            //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
                 println!("{x}");
                 todo!()
@@ -443,9 +449,9 @@ pub trait RDSReader: Read {
             (SexpKind::Environment(environment), SexpKind::Nil) => {
                 Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
             }
-            _ => Err(RDSReaderError::DataError(
-                "Wrong format of the closure".into(),
-            )),
+            (env, formals) => Err(RDSReaderError::DataError(format!(
+                "Wrong format of the closure : {env}, {formals}"
+            ))),
         }?;
 
         if let Some(attr) = attr {

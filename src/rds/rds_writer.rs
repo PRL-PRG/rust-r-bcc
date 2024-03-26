@@ -188,6 +188,13 @@ pub trait RDSWriter: Write {
             }
             SexpKind::Vec(items) => self.write_vecsxp(items, refs),
             SexpKind::MissingArg => Ok(()),
+            SexpKind::BaseNamespace => Ok(()),
+            SexpKind::Buildin(sym) => {
+                self.write_int(
+                    super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
+                )?;
+                self.write_charsxp(sym.data.as_str())
+            },
         }?;
         if flag.has_attributes
             && flag.sexp_type != super::sexptype::REFSXP
@@ -214,10 +221,11 @@ pub trait RDSWriter: Write {
         let mut reps_vec = create_reps(bc, refs);
         let reps = reps_vec.len() as i32;
         let mut reps_visit = vec![];
-        reps_visit.resize(reps as usize, false);
+        reps_visit.resize(reps as usize, None);
 
         self.write_int(reps)?;
-        self.write_bc_inner(bc, refs, &mut reps_vec, &mut reps_visit)
+        let mut reps_count = 0;
+        self.write_bc_inner(bc, refs, &mut reps_vec, &mut reps_count, &mut reps_visit)
     }
 
     fn write_bc_inner(
@@ -225,11 +233,12 @@ pub trait RDSWriter: Write {
         bc: &Bc,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_visit: &mut Vec<bool>,
+        reps_count : &mut i32,
+        reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(super::sexptype::INTSXP as i32)?;
         self.write_intvec(&bc.instructions)?;
-        self.write_bcconsts(&bc.constpool, refs, reps, reps_visit)
+        self.write_bcconsts(&bc.constpool, refs, reps, reps_count, reps_visit)
     }
 
     fn write_bcconsts(
@@ -237,7 +246,8 @@ pub trait RDSWriter: Write {
         consts: &Vec<Sexp>,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_visit: &mut Vec<bool>,
+        reps_count : &mut i32,
+        reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(consts.len() as i32)?;
         for c in consts {
@@ -249,13 +259,13 @@ pub trait RDSWriter: Write {
                 }
                 SexpKind::Bc(bc) => {
                     self.write_int(sexptype::BCODESXP as i32)?;
-                    self.write_bc_inner(bc, refs, reps, reps_visit)?
+                    self.write_bc_inner(bc, refs, reps, reps_count, reps_visit)?
                 }
                 SexpKind::Lang(lang) => {
-                    self.write_bclang(lang, &c.metadata, refs, reps, reps_visit)?
+                    self.write_bclang(lang, &c.metadata, refs, reps, reps_count, reps_visit)?
                 }
                 SexpKind::List(list) => {
-                    self.write_bclist(list, &c.metadata, refs, reps, reps_visit)?
+                    self.write_bclist(list, &c.metadata, refs, reps, reps_count, reps_visit)?
                 }
                 _ => {
                     self.write_int(flags.sexp_type as i32)?;
@@ -272,21 +282,23 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_visit: &mut Vec<bool>,
+        reps_count : &mut i32,
+        reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         if let Some(pos) = reps
             .iter()
             .position(|x| x == &SexpKind::Lang(lang.clone()).into())
         {
-            if reps_visit[pos] {
+            if let Some(index) = reps_visit[pos] {
                 self.write_int(sexptype::BCREPREF as i32)?;
-                self.write_int(pos as i32 - 1)?;
+                self.write_int(index)?;
                 return Ok(());
             }
 
             self.write_int(sexptype::BCREPDEF as i32)?;
-            self.write_int(pos as i32 - 1)?;
-            reps_visit[pos] = true;
+            self.write_int(reps_count.clone())?;
+            reps_visit[pos] = Some(reps_count.clone());
+            *reps_count += 1;
         }
 
         let type_val = if metadata.attr.is_some() {
@@ -306,7 +318,7 @@ pub trait RDSWriter: Write {
 
         match &lang.target {
             lang::Target::Lang(lang) => {
-                self.write_bclang(lang.as_ref(), &MetaData::default(), refs, reps, reps_visit)?;
+                self.write_bclang(lang.as_ref(), &MetaData::default(), refs, reps, reps_count, reps_visit)?;
             }
             lang::Target::Sym(sym) => {
                 // padding dont ask why
@@ -315,7 +327,7 @@ pub trait RDSWriter: Write {
             }
         }
 
-        self.write_bclist(&lang.args, &MetaData::default(), refs, reps, reps_visit)?;
+        self.write_bclist(&lang.args, &MetaData::default(), refs, reps, reps_count, reps_visit)?;
 
         Ok(())
     }
@@ -326,7 +338,8 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_visit: &mut Vec<bool>,
+        reps_count : &mut i32,
+        reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         // special case for empty list
         // it must behave as Nil
@@ -341,15 +354,16 @@ pub trait RDSWriter: Write {
             .iter()
             .position(|x| x == &SexpKind::List(list.clone()).into())
         {
-            if reps_visit[pos] {
+            if let Some(index) = reps_visit[pos] {
                 self.write_int(sexptype::BCREPREF as i32)?;
-                self.write_int(pos as i32)?;
+                self.write_int(index)?;
                 return Ok(());
             }
 
             self.write_int(sexptype::BCREPDEF as i32)?;
-            self.write_int(pos as i32)?;
-            reps_visit[pos] = true;
+            self.write_int(reps_count.clone())?;
+            reps_visit[pos] = Some(reps_count.clone());
+            *reps_count += 1;
         }
 
         let type_val = if metadata.attr.is_some() {
@@ -382,7 +396,7 @@ pub trait RDSWriter: Write {
 
             match &item.data.kind {
                 SexpKind::Lang(lang) => {
-                    self.write_bclang(lang, &item.data.metadata, refs, reps, reps_visit)?;
+                    self.write_bclang(lang, &item.data.metadata, refs, reps, reps_count, reps_visit)?;
                 }
                 _ => {
                     self.write_int(0)?;

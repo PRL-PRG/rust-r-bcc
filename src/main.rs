@@ -63,6 +63,7 @@ fn main() -> Result<(), MainError> {
             let mut compiler = Compiler::new();
             let bc = compiler.cmpfun(cl);
             println!("{bc}");
+            println!("{:?}", compiler.warnings);
             let bc: Sexp = bc.into();
 
             let mut outfile = File::create("temp/compout.dat")?;

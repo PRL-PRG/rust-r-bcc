@@ -179,6 +179,8 @@ impl From<&Sexp> for Flag {
             SexpKind::Str(_) => sexptype::STRSXP,
             SexpKind::Vec(_) => sexptype::VECSXP,
             SexpKind::MissingArg => sexptype::MISSINGARG_SXP,
+            SexpKind::BaseNamespace => sexptype::BASENAMESPACE_SXP,
+            SexpKind::Buildin(_) => sexptype::BUILTINSXP,
         };
 
         let str_fmt = match value.kind {

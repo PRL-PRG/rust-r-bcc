@@ -98,6 +98,7 @@ pub mod data {
 }
 
 pub mod lang {
+    use std::collections::HashMap;
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct Sym {
@@ -237,6 +238,15 @@ pub mod lang {
         Normal(NormalEnv),
     }
 
+    impl Environment {
+        pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
+            match self {
+                Environment::Global | Environment::Base | Environment::Empty => None,
+                Environment::Normal(env) => env.find_local_var(name),
+            }
+        }
+    }
+
     #[derive(Debug, PartialEq, Clone)]
     pub struct NormalEnv {
         pub parent: Box<Environment>,
@@ -259,6 +269,20 @@ pub mod lang {
                 hash_frame,
             }
         }
+
+        pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
+            match self.frame.get(name) {
+                Some(res) => Some(res),
+                None => match self.hash_frame.get(name) {
+                    Some(res) => Some(res),
+                    None => self.parent.find_local_var(name),
+                },
+            }
+        }
+
+        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+            todo!()
+        }
     }
 
     impl Into<Environment> for NormalEnv {
@@ -273,25 +297,90 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq, Clone, Default)]
+    #[derive(PartialEq, Clone, Default)]
     pub struct ListFrame {
         pub data: Option<super::data::List>,
+        pub env: HashMap<String, usize>,
+    }
+
+    impl std::fmt::Debug for ListFrame {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self.data)
+        }
     }
 
     impl ListFrame {
         pub fn new(data: super::data::List) -> Self {
-            Self { data: Some(data) }
+            let mut env = HashMap::default();
+            for (index, item) in data.iter().enumerate() {
+                let Some(name) = item.tag.clone() else {
+                    unreachable!()
+                };
+                env.insert(name, index);
+            }
+            Self {
+                data: Some(data),
+                env,
+            }
+        }
+
+        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+            let index = self.env.get(name)?.clone();
+            match &self.data {
+                Some(data) => Some(&data[index].data),
+                None => None,
+            }
         }
     }
 
-    #[derive(Debug, PartialEq, Clone, Default)]
+    #[derive(PartialEq, Clone, Default)]
     pub struct HashFrame {
         pub data: Option<Vec<super::Sexp>>,
+        pub env: HashMap<String, (usize, usize)>,
+    }
+
+    impl std::fmt::Debug for HashFrame {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self.data)
+        }
     }
 
     impl HashFrame {
         pub fn new(data: Vec<super::Sexp>) -> Self {
-            Self { data: Some(data) }
+            let mut env = HashMap::new();
+
+            for (block, item) in data.iter().enumerate() {
+                match &item.kind {
+                    super::SexpKind::List(list) => {
+                        for (idx, item) in list.into_iter().enumerate() {
+                            let Some(name) = item.tag.clone() else {
+                                unreachable!()
+                            };
+                            env.insert(name, (block, idx));
+                        }
+                    }
+                    super::SexpKind::Nil => (),
+                    _ => unreachable!(),
+                }
+            }
+
+            Self {
+                data: Some(data),
+                env,
+            }
+        }
+
+        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+            let (block, idx) = self.env.get(name)?.clone();
+
+            match &self.data {
+                Some(data) => match &data[block].kind {
+                    super::SexpKind::List(list) => Some(&list[idx].data),
+                    _ if idx == 0 => Some(&data[block]),
+                    _ => None,
+                },
+                None => None,
+            }
         }
     }
 
@@ -315,6 +404,7 @@ pub enum SexpKind {
     Promise,
     Lang(lang::Lang),
     Bc(Bc),
+    Buildin(lang::Sym),
 
     // vecs
     Char(Vec<char>),
@@ -326,4 +416,6 @@ pub enum SexpKind {
     Vec(Vec<Sexp>),
 
     MissingArg,
+
+    BaseNamespace, // as in GnuR fake namespace
 }
