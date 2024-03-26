@@ -22,7 +22,7 @@ impl Display for Bc {
         }
 
         // const pool
-        write!(f, "constant pool : {}", join_string(&self.constpool, ", "))?;
+        write!(f, "constant pool : [{}]\n", join_string(&self.constpool, ", "))?;
 
         Ok(())
     }
