@@ -107,7 +107,6 @@ impl CodeBuffer {
     }
 
     fn set_current_expr(&mut self, sexp: Sexp) -> Option<Sexp> {
-        println!("set curr expr {sexp}");
         std::mem::replace(&mut self.current_expr, Some(sexp))
     }
 
@@ -168,10 +167,10 @@ impl Compiler {
     }
 
     fn gen_code(&mut self, target: &Sexp, loc: Option<&Sexp>) -> Bc {
-        let tmp = if let Some(loc) =loc {
+        let tmp = if let Some(loc) = loc {
             CodeBuffer::new_with_expr(loc.clone())
         } else {
-            CodeBuffer::new() 
+            CodeBuffer::new()
         };
         let orig = std::mem::replace(&mut self.code_buffer, tmp);
         self.code_buffer.add_const(target.clone());
@@ -405,6 +404,35 @@ mod tests {
     test_fun_noopt![basic, "function() NULL"];
     test_fun_noopt![basic_real, "function() 1"];
     test_fun_noopt![identity, "function(x) x"];
+    test_fun_noopt![
+        bool_arg,
+        "
+        function(f) {
+            f(T);
+            f(F);
+        }"
+    ];
     test_fun_noopt![addition, "function(x, y) x + y"];
-    test_fun_noopt![block, "function(a, b = 0) {x <- c(a, 1); x[[b]];}"];
+    test_fun_noopt![
+        block,
+        "
+        function(a, b = 0) {
+            x <- c(a, 1);
+            x[[b]];
+        }"
+    ];
+    test_fun_noopt![
+        fib,
+        "
+        function(n) {
+            a <- 0;
+            b <- 1;
+            while(n > 0) {
+                tmp <- b;
+                b <- a + b;
+                a <- tmp;
+            }
+            a
+        }"
+    ];
 }
