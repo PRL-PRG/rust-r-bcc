@@ -3,10 +3,11 @@ use crate::sexp::{
     sexp::{data, lang, MetaData, Sexp, SexpKind},
 };
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 struct CompilerContext {
     top_level: bool,
     tailcall: bool,
+    call: Option<Sexp>,
 }
 
 impl CompilerContext {
@@ -14,6 +15,7 @@ impl CompilerContext {
         Self {
             top_level: true,
             tailcall: true,
+            call: None,
             ..ctxt.clone()
         }
     }
@@ -25,8 +27,16 @@ impl CompilerContext {
             ..ctxt.clone()
         }
     }
+
+    fn new_call(ctxt: &CompilerContext, call: Sexp) -> Self {
+        Self {
+            call: Some(call.clone()),
+            ..ctxt.clone()
+        }
+    }
 }
 
+/// i32 min represents NA in intepreter
 const NA: i32 = i32::MIN;
 
 #[derive(Debug)]
@@ -45,6 +55,14 @@ impl CodeBuffer {
         Self {
             bc: Bc::new(),
             current_expr: None,
+            expression_buffer: vec![NA], // first instruction is version and does not have a source
+        }
+    }
+
+    fn new_with_expr(curr_expr: Sexp) -> Self {
+        Self {
+            bc: Bc::new(),
+            current_expr: Some(curr_expr),
             expression_buffer: vec![NA], // first instruction is version and does not have a source
         }
     }
@@ -88,8 +106,13 @@ impl CodeBuffer {
         }
     }
 
-    fn set_current_expr(&mut self, sexp: Sexp) {
-        self.current_expr = Some(sexp);
+    fn set_current_expr(&mut self, sexp: Sexp) -> Option<Sexp> {
+        println!("set curr expr {sexp}");
+        std::mem::replace(&mut self.current_expr, Some(sexp))
+    }
+
+    fn restore_current_expr(&mut self, orig: Option<Sexp>) {
+        let _ = std::mem::replace(&mut self.current_expr, orig);
     }
 }
 
@@ -134,7 +157,8 @@ impl Compiler {
             lang::HashFrame::new(vec![]),
         )
         .into();
-        let body = SexpKind::Bc(self.gen_code(closure.body.as_ref())).into();
+        let body =
+            SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
         closure.body = Box::new(body);
         let lang::Environment::Normal(env) = &mut self.environment else {
             unreachable!()
@@ -143,17 +167,26 @@ impl Compiler {
         closure
     }
 
-    fn gen_code(&mut self, target: &Sexp) -> Bc {
-        let orig = std::mem::replace(&mut self.code_buffer, CodeBuffer::new());
+    fn gen_code(&mut self, target: &Sexp, loc: Option<&Sexp>) -> Bc {
+        let tmp = if let Some(loc) =loc {
+            CodeBuffer::new_with_expr(loc.clone())
+        } else {
+            CodeBuffer::new() 
+        };
+        let orig = std::mem::replace(&mut self.code_buffer, tmp);
         self.code_buffer.add_const(target.clone());
-        self.cmp(&target, false);
+        self.cmp(&target, false, false);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs);
         std::mem::replace(&mut self.code_buffer, orig).bc
     }
 
-    fn cmp(&mut self, sexp: &Sexp, missing_ok: bool) {
-        self.code_buffer.set_current_expr(sexp.clone());
+    fn cmp(&mut self, sexp: &Sexp, missing_ok: bool, set_loc: bool) {
+        let orig = if set_loc {
+            self.code_buffer.set_current_expr(sexp.clone())
+        } else {
+            None
+        };
         match &sexp.kind {
             SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
             SexpKind::Nil => {
@@ -165,7 +198,7 @@ impl Compiler {
             }
             SexpKind::Environment(_) => todo!(),
             SexpKind::Promise => todo!(),
-            SexpKind::Lang(lang) => self.cmp_lang(lang),
+            SexpKind::Lang(lang) => self.cmp_call(lang),
             _ => {
                 let ci = self.code_buffer.add_const(sexp.clone());
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
@@ -175,6 +208,7 @@ impl Compiler {
                 }
             }
         };
+        self.code_buffer.restore_current_expr(orig);
     }
 
     fn cmp_sym(&mut self, sym: &lang::Sym, missing_ok: bool) {
@@ -199,9 +233,13 @@ impl Compiler {
         }
     }
 
-    fn cmp_lang(&mut self, call: &lang::Lang) {
+    fn cmp_call(&mut self, call: &lang::Lang) {
+        // set up state
         let mut sexp_tmp = std::mem::take(&mut self.code_buffer.current_expr);
-        self.code_buffer.set_current_expr(call.clone().into());
+        let orig = self.code_buffer.set_current_expr(call.clone().into());
+        let tmp = CompilerContext::new_call(&self.context, call.clone().into());
+        let mut orig_context = std::mem::replace(&mut self.context, tmp);
+
         match &call.target {
             lang::Target::Lang(_) => todo!(),
             lang::Target::Sym(sym) => {
@@ -215,6 +253,10 @@ impl Compiler {
                 }
             }
         };
+
+        // restore state
+        self.code_buffer.restore_current_expr(orig);
+        std::mem::swap(&mut self.context, &mut orig_context);
         std::mem::swap(&mut self.code_buffer.current_expr, &mut sexp_tmp);
     }
 
@@ -226,7 +268,8 @@ impl Compiler {
                 SexpKind::Bc(_) => todo!(),
                 SexpKind::Promise => todo!(),
                 SexpKind::Sym(_) | SexpKind::Lang(_) => {
-                    let code = self.gen_code(&arg.data);
+                    let curr = self.code_buffer.current_expr.clone();
+                    let code = self.gen_code(&arg.data, curr.as_ref());
                     let index = self.code_buffer.add_const(code.into());
                     self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
                 }
@@ -360,6 +403,8 @@ mod tests {
     }
 
     test_fun_noopt![basic, "function() NULL"];
+    test_fun_noopt![basic_real, "function() 1"];
     test_fun_noopt![identity, "function(x) x"];
     test_fun_noopt![addition, "function(x, y) x + y"];
+    test_fun_noopt![block, "function(a, b = 0) {x <- c(a, 1); x[[b]];}"];
 }
