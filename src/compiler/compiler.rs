@@ -180,6 +180,8 @@ impl Compiler {
         std::mem::replace(&mut self.code_buffer, orig).bc
     }
 
+    /// Default for missing_ok and set_loc in original compiler
+    /// is missing_ok = FALSE and set_loc = TRUE
     fn cmp(&mut self, sexp: &Sexp, missing_ok: bool, set_loc: bool) {
         let orig = if set_loc {
             self.code_buffer.set_current_expr(sexp.clone())
@@ -240,7 +242,21 @@ impl Compiler {
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
         match &call.target {
-            lang::Target::Lang(_) => todo!(),
+            lang::Target::Lang(lang) => {
+                let orig_tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+
+                self.cmp(&lang.as_ref().clone().into(), false, true);
+                self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
+                self.cmp_args(&call.args);
+                let index = self.code_buffer.add_const(call.clone().into());
+                self.code_buffer.add_instr2(BcOp::CALL_OP, index);
+
+                self.context.tailcall = orig_tailcall;
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+            }
             lang::Target::Sym(sym) => {
                 let index = self.code_buffer.add_const(sym.clone().into());
                 self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
@@ -260,6 +276,9 @@ impl Compiler {
     }
 
     fn cmp_args(&mut self, args: &data::List) {
+        let tmp = CompilerContext::new_promise(&self.context);
+        let mut orig_context = std::mem::replace(&mut self.context, tmp);
+
         for arg in args {
             match &arg.data.kind {
                 SexpKind::MissingArg => todo!(),
@@ -287,9 +306,12 @@ impl Compiler {
                 _ => {
                     let index = self.code_buffer.add_const(arg.data.clone());
                     self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
+                    self.cmp_tag(&arg.tag);
                 }
             }
         }
+
+        std::mem::swap(&mut self.context, &mut orig_context);
     }
 
     fn cmp_tag(&mut self, tag: &Option<String>) {
@@ -383,6 +405,8 @@ mod tests {
                         unreachable!();
                     };
                     let bc = compiler.cmpfun(cl);
+
+                    insta::assert_debug_snapshot!(compiler.warnings);
                     let input: Sexp = bc.into();
 
                     println!("My compilation:\n{input}\n");
@@ -435,4 +459,6 @@ mod tests {
             a
         }"
     ];
+    test_fun_noopt![call_lang_target, "function(f, x) f(x)()"];
+    test_fun_noopt![call_tag, "function() list(a=1)"];
 }

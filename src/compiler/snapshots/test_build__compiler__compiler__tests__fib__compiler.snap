@@ -1,0 +1,36 @@
+---
+source: src/compiler/compiler.rs
+expression: compiler.warnings
+---
+[
+    VariableDoesNotExist(
+        "a",
+    ),
+    VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "tmp",
+    ),
+    VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "a",
+    ),
+    VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "a",
+    ),
+    VariableDoesNotExist(
+        "tmp",
+    ),
+    VariableDoesNotExist(
+        "a",
+    ),
+]
