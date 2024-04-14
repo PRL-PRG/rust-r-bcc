@@ -1,0 +1,69 @@
+---
+source: src/rds/tests.rs
+expression: data
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [
+                Formal {
+                    name: Sym {
+                        data: "x",
+                    },
+                    value: Sexp {
+                        kind: MissingArg,
+                        metadata: MetaData {
+                            attr: None,
+                        },
+                    },
+                },
+            ],
+            body: Sexp {
+                kind: Lang(
+                    Lang {
+                        target: Sym(
+                            Sym {
+                                data: "+",
+                            },
+                        ),
+                        args: [
+                            TaggedSexp {
+                                tag: None,
+                                data: Sexp {
+                                    kind: Sym(
+                                        Sym {
+                                            data: "x",
+                                        },
+                                    ),
+                                    metadata: MetaData {
+                                        attr: None,
+                                    },
+                                },
+                            },
+                            TaggedSexp {
+                                tag: None,
+                                data: Sexp {
+                                    kind: Real(
+                                        [
+                                            1.0,
+                                        ],
+                                    ),
+                                    metadata: MetaData {
+                                        attr: None,
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                ),
+                metadata: MetaData {
+                    attr: None,
+                },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}

@@ -4,9 +4,15 @@ use crate::sexp::{
 };
 
 #[derive(Default, Clone)]
+struct LoopContext {
+    goto_ok: bool,
+}
+
+#[derive(Default, Clone)]
 struct CompilerContext {
     top_level: bool,
     tailcall: bool,
+    loop_ctx: Option<LoopContext>,
     call: Option<Sexp>,
 }
 
@@ -34,6 +40,21 @@ impl CompilerContext {
             ..ctxt.clone()
         }
     }
+
+    fn new_arg(ctxt: &CompilerContext) -> Self {
+        Self {
+            tailcall: false,
+            top_level: false,
+            loop_ctx: match &ctxt.loop_ctx {
+                Some(ctx) => Some(LoopContext {
+                    goto_ok: false,
+                    ..ctx.clone()
+                }),
+                None => None,
+            },
+            ..ctxt.clone()
+        }
+    }
 }
 
 /// i32 min represents NA in intepreter
@@ -48,6 +69,7 @@ struct CodeBuffer {
     bc: Bc,
     current_expr: Option<Sexp>,
     expression_buffer: Vec<i32>,
+    labels: Vec<usize>,
 }
 
 impl CodeBuffer {
@@ -56,6 +78,7 @@ impl CodeBuffer {
             bc: Bc::new(),
             current_expr: None,
             expression_buffer: vec![NA], // first instruction is version and does not have a source
+            labels: vec![],
         }
     }
 
@@ -64,6 +87,7 @@ impl CodeBuffer {
             bc: Bc::new(),
             current_expr: Some(curr_expr),
             expression_buffer: vec![NA], // first instruction is version and does not have a source
+            labels: vec![],
         }
     }
 
@@ -113,6 +137,21 @@ impl CodeBuffer {
     fn restore_current_expr(&mut self, orig: Option<Sexp>) {
         let _ = std::mem::replace(&mut self.current_expr, orig);
     }
+
+    fn make_label(&mut self) -> i32 {
+        self.labels.push(0);
+        (self.labels.len() - 1) as i32
+    }
+
+    fn set_label(&mut self, label: i32) {
+        self.labels[label as usize] = self.bc.instructions.len() - 1
+    }
+
+    fn put_label(&mut self, label: i32) {
+        let position = self.labels[label as usize];
+        self.labels[label as usize] = self.bc.instructions.len();
+        self.bc.instructions[position] = self.bc.instructions.len() as i32;
+    }
 }
 
 pub struct Compiler {
@@ -127,7 +166,18 @@ pub struct Compiler {
 impl Compiler {
     pub fn new() -> Self {
         Self {
-            options: CompilerOptions,
+            options: CompilerOptions::default(),
+            context: CompilerContext::new_top(&CompilerContext::default()),
+            code_buffer: CodeBuffer::new(),
+
+            environment: lang::Environment::Global,
+            warnings: vec![],
+        }
+    }
+
+    pub fn new_options(inline_level: usize) -> Self {
+        Self {
+            options: CompilerOptions { inline_level },
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
@@ -241,6 +291,10 @@ impl Compiler {
         let tmp = CompilerContext::new_call(&self.context, call.clone().into());
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
+        if self.try_inline(call) {
+            return;
+        }
+
         match &call.target {
             lang::Target::Lang(lang) => {
                 let orig_tailcall = self.context.tailcall;
@@ -344,9 +398,143 @@ impl Compiler {
             },
         }
     }
+
+    fn cmp_prim2(&mut self, first: &Sexp, second: &Sexp, full: &lang::Lang, op: BcOp) {
+        let taicall = self.context.tailcall;
+        self.context.tailcall = false;
+        self.cmp(first, false, true);
+        self.context.tailcall = taicall;
+
+        let tmp = CompilerContext::new_arg(&self.context);
+        let mut orig = std::mem::replace(&mut self.context, tmp);
+
+        self.cmp(second, false, true);
+
+        let index = self.code_buffer.add_const(full.clone().into());
+        self.code_buffer.add_instr2(op, index);
+
+        std::mem::swap(&mut self.context, &mut orig);
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+    }
+
+    fn try_inline(&mut self, expr: &lang::Lang) -> bool {
+        let sym = match &expr.target {
+            lang::Target::Lang(_) => return false,
+            lang::Target::Sym(s) => s.data.as_str(),
+        };
+
+        let info = self.get_inlineinfo(sym);
+
+        if info.is_none() {
+            return false;
+        }
+
+        match sym {
+            "if" => {
+                let cond = &expr.args[0].data;
+                let then_block = &expr.args[1].data;
+                let else_block = expr.args.get(2).map(|x| &x.data);
+
+                // condition is compiled without tailcall
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(cond, false, true);
+                self.context.tailcall = tailcall;
+
+                let call_idx = self.code_buffer.add_const(expr.clone().into());
+                let else_label = self.code_buffer.make_label();
+
+                self.code_buffer
+                    .add_instr_n(BcOp::BRIFNOT_OP, &[call_idx, else_label]);
+                self.code_buffer.set_label(else_label);
+                self.cmp(then_block, false, true);
+
+                if self.context.tailcall {
+                    self.code_buffer.put_label(else_label);
+                    match else_block {
+                        Some(block) => {
+                            self.cmp(block, false, true);
+                        }
+                        None => {
+                            self.code_buffer.add_instr(BcOp::LDNULL_OP);
+                            self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+                            self.code_buffer.add_instr(BcOp::RETURN_OP);
+                        }
+                    }
+                } else {
+                    let end_label = self.code_buffer.make_label();
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, end_label);
+                    self.code_buffer.set_label(end_label);
+                    self.code_buffer.put_label(else_label);
+
+                    match else_block {
+                        Some(block) => {
+                            self.cmp(block, false, true);
+                        }
+                        None => {
+                            self.code_buffer.add_instr(BcOp::LDNULL_OP);
+                        }
+                    };
+                    self.code_buffer.put_label(end_label);
+                }
+
+                true
+            }
+            "{" => {
+                if expr.args.is_empty() {
+                    self.cmp(&SexpKind::Nil.into(), false, true);
+                    return true;
+                }
+
+                let orig_loc = std::mem::replace(&mut self.code_buffer.current_expr, None);
+
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                for inner in &expr.args[0..(expr.args.len() - 1)] {
+                    self.code_buffer.set_current_expr(inner.data.clone());
+                    self.cmp(&inner.data, false, false);
+                    self.code_buffer.set_current_expr(inner.data.clone());
+                    self.code_buffer.add_instr(BcOp::POP_OP);
+                }
+                self.context.tailcall = tailcall;
+
+                self.code_buffer
+                    .set_current_expr(expr.args.last().unwrap().data.clone());
+                self.cmp(&expr.args.last().unwrap().data, false, false);
+
+                self.code_buffer.restore_current_expr(orig_loc);
+
+                true
+            }
+            "+" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn get_inlineinfo(&self, function: &str) -> Option<bool> {
+        if self.options.inline_level > 0 {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
-pub struct CompilerOptions;
+pub struct CompilerOptions {
+    inline_level: usize,
+}
+
+impl Default for CompilerOptions {
+    fn default() -> Self {
+        Self { inline_level: 2 }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -376,6 +564,75 @@ mod tests {
                             "-d",
                             format!("compiler::cmpfun({}, options=list(optimize=0))", $code)
                                 .as_str(),
+                            path_comp,
+                        ])
+                        .spawn()
+                        .unwrap();
+                    assert!(command.wait().unwrap().success());
+
+                    let mut file = std::fs::File::open(path).unwrap();
+                    let RDSResult {
+                        header,
+                        data: input,
+                    } = file.read_rds().unwrap();
+
+                    let mut input_vec = vec![];
+                    let mut file = std::fs::File::open(path_comp).unwrap();
+                    file.read_to_end(&mut input_vec).unwrap();
+
+                    let mut file = std::fs::File::open(path_comp).unwrap();
+                    let RDSResult {
+                        header: _,
+                        data: correct,
+                    } = file.read_rds().unwrap();
+
+                    println!("{}", input);
+
+                    let mut compiler = Compiler::new_options(0);
+                    let SexpKind::Closure(cl) = input.kind else {
+                        unreachable!();
+                    };
+                    let bc = compiler.cmpfun(cl);
+
+                    insta::assert_debug_snapshot!(compiler.warnings);
+                    let input: Sexp = bc.into();
+
+                    println!("My compilation:\n{input}\n");
+                    println!("Correct compilation:\n{correct}");
+
+                    let outdata: Vec<u8> = vec![];
+                    let mut writer = BufWriter::new(outdata);
+                    writer.write_rds(header, input).unwrap();
+                    writer.flush().unwrap();
+
+                    assert_eq!(writer.get_ref(), &input_vec);
+                    std::fs::remove_file(path).unwrap();
+                    std::fs::remove_file(path_comp).unwrap();
+                }
+            }
+        };
+    }
+
+    macro_rules! test_fun_default {
+        ( $name:ident, $code:expr) => {
+            mod $name {
+                use super::*;
+
+                #[test]
+                fn compiler() {
+                    let path = format!("temp/{}_compiler.dat", stringify!($name));
+                    let path = path.as_str();
+                    let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
+                    let path_comp = path_comp.as_str();
+                    let mut command = std::process::Command::new("./create_serdata.R")
+                        .args(["-d", $code, path])
+                        .spawn()
+                        .unwrap();
+                    assert!(command.wait().unwrap().success());
+                    let mut command = std::process::Command::new("./create_serdata.R")
+                        .args([
+                            "-d",
+                            format!("compiler::cmpfun({})", $code).as_str(),
                             path_comp,
                         ])
                         .spawn()
@@ -461,4 +718,52 @@ mod tests {
     ];
     test_fun_noopt![call_lang_target, "function(f, x) f(x)()"];
     test_fun_noopt![call_tag, "function() list(a=1)"];
+    test_fun_noopt![if_expression_noopt, "function(x) if (x) 1 else 2"];
+
+    test_fun_default![basic_opt, "function() NULL"];
+    test_fun_default![basic_real_opt, "function() 1"];
+    test_fun_default![identity_opt, "function(x) x"];
+    test_fun_default![
+        bool_arg_opt,
+        "
+        function(f) {
+            f(T);
+            f(F);
+        }"
+    ];
+    test_fun_default![addition_opt, "function(x, y) x + y"];
+    test_fun_default![
+        block_opt,
+        "
+        function(a, b = 0) {
+            x <- c(a, 1);
+            x[[b]];
+        }"
+    ];
+    test_fun_default![
+        block02_opt,
+        "
+        function(x) {
+            if (x) 1 else 2;
+            if (x) 3 else 4
+        }"
+    ];
+    test_fun_default![
+        fib_opt,
+        "
+        function(n) {
+            a <- 0;
+            b <- 1;
+            while(n > 0) {
+                tmp <- b;
+                b <- a + b;
+                a <- tmp;
+            }
+            a
+        }"
+    ];
+    test_fun_default![call_lang_target_opt, "function(f, x) f(x)()"];
+    test_fun_default![call_tag_opt, "function() list(a=1)"];
+
+    test_fun_default![if_expression, "function(x) if (x) 1 else 2"];
 }

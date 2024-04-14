@@ -56,7 +56,7 @@ fn main() -> Result<(), MainError> {
 
     let compile = args[2] == "-c";
 
-    println!("{sexp}");
+    println!("{sexp:?}");
 
     match sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) if compile => {
