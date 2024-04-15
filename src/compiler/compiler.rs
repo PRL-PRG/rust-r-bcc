@@ -420,6 +420,14 @@ impl Compiler {
         }
     }
 
+    fn cmp_dispatch(&mut self) {
+        todo!()
+    }
+
+    fn cmp_subset_dispatch(&mut self) {
+        todo!()
+    }
+
     fn try_inline(&mut self, expr: &lang::Lang) -> bool {
         let sym = match &expr.target {
             lang::Target::Lang(_) => return false,
@@ -509,8 +517,27 @@ impl Compiler {
 
                 true
             }
+            "<-" if expr.args.len() == 2
+                && matches!(&expr.args[0].data.kind, SexpKind::Sym(_)) =>
+            {
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(&expr.args[1].data, false, true);
+                self.context.tailcall = tailcall;
+                
+                let index = self.code_buffer.add_const(expr.args[0].data.clone());
+                self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
+                true
+            }
             "+" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
+                true
+            }
+            "[[" => todo!(),
+            "while" => {
+                let cond = &expr.args[0].data;
+                let body = &expr.args[1].data;
+
                 true
             }
             _ => false,
@@ -764,6 +791,6 @@ mod tests {
     ];
     test_fun_default![call_lang_target_opt, "function(f, x) f(x)()"];
     test_fun_default![call_tag_opt, "function() list(a=1)"];
-
     test_fun_default![if_expression, "function(x) if (x) 1 else 2"];
+    test_fun_default![set_var_opt, "function(x) {a <- x; a}"];
 }

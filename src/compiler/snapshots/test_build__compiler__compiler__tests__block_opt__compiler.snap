@@ -6,7 +6,4 @@ expression: compiler.warnings
     VariableDoesNotExist(
         "x",
     ),
-    VariableDoesNotExist(
-        "x",
-    ),
 ]
