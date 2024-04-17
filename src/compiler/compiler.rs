@@ -5,6 +5,8 @@ use crate::sexp::{
 
 #[derive(Default, Clone)]
 struct LoopContext {
+    loop_label: i32,
+    end_label: i32,
     goto_ok: bool,
 }
 
@@ -54,6 +56,19 @@ impl CompilerContext {
             },
             ..ctxt.clone()
         }
+    }
+
+    fn new_loop(ctxt: &CompilerContext, loop_label: i32, end_label: i32) -> Self {
+        let mut res = Self {
+            loop_ctx: Some(LoopContext {
+                loop_label,
+                end_label,
+                goto_ok: true,
+            }),
+            ..ctxt.clone()
+        };
+        res.tailcall = false;
+        res
     }
 }
 
@@ -147,10 +162,18 @@ impl CodeBuffer {
         self.labels[label as usize] = self.bc.instructions.len() - 1
     }
 
+    fn put_label_back(&mut self, label: i32) {
+        self.labels[label as usize] = self.bc.instructions.len();
+    }
+
     fn put_label(&mut self, label: i32) {
         let position = self.labels[label as usize];
         self.labels[label as usize] = self.bc.instructions.len();
         self.bc.instructions[position] = self.bc.instructions.len() as i32;
+    }
+
+    fn get_label_back(&self, label: i32) -> i32 {
+        self.labels[label as usize] as i32
     }
 }
 
@@ -517,14 +540,12 @@ impl Compiler {
 
                 true
             }
-            "<-" if expr.args.len() == 2
-                && matches!(&expr.args[0].data.kind, SexpKind::Sym(_)) =>
-            {
+            "<-" if expr.args.len() == 2 && matches!(&expr.args[0].data.kind, SexpKind::Sym(_)) => {
                 let tailcall = self.context.tailcall;
                 self.context.tailcall = false;
                 self.cmp(&expr.args[1].data, false, true);
                 self.context.tailcall = tailcall;
-                
+
                 let index = self.code_buffer.add_const(expr.args[0].data.clone());
                 self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
                 true
@@ -538,10 +559,106 @@ impl Compiler {
                 let cond = &expr.args[0].data;
                 let body = &expr.args[1].data;
 
+                if self.check_skip_loopctx(cond, false) && self.check_skip_loopctx(body, false) {
+                    self.cmp_while_body(expr, cond, body);
+                } else {
+                    todo!()
+                }
+
+                self.code_buffer.add_instr(BcOp::LDNULL_OP);
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
+            }
+            ">" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::GT_OP);
                 true
             }
             _ => false,
         }
+    }
+
+    fn cmp_while_body(&mut self, full: &lang::Lang, cond: &Sexp, body: &Sexp) {
+        let loop_label = self.code_buffer.make_label();
+        let end_label = self.code_buffer.make_label();
+        self.code_buffer.put_label_back(loop_label);
+
+        let tmp = CompilerContext::new_loop(&self.context, loop_label, end_label);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        self.cmp(cond, false, true);
+
+        let callidx = self.code_buffer.add_const(full.clone().into());
+        self.code_buffer
+            .add_instr_n(BcOp::BRIFNOT_OP, &[callidx, end_label]);
+        self.code_buffer.set_label(end_label);
+        self.cmp(body, false, true);
+
+        self.code_buffer.add_instr(BcOp::POP_OP);
+        self.code_buffer
+            .add_instr2(BcOp::GOTO_OP, self.code_buffer.get_label_back(loop_label));
+        self.code_buffer.put_label(end_label);
+
+        let _ = std::mem::replace(&mut self.context, orig);
+    }
+
+    fn check_skip_loopctx_lang(&self, lang: &lang::Lang, break_ok: bool) -> bool {
+        match &lang.target {
+            lang::Target::Sym(sym) => {
+                if !break_ok && matches!(sym.data.as_str(), "break" | "next") {
+                    false
+                } else if self.is_loop_stop_fun(sym.data.as_str()) {
+                    true
+                } else if self.is_loop_top_fun(sym.data.as_str()) {
+                    self.check_skip_loopctx_list(&lang.args, break_ok)
+                } else if matches!(sym.data.as_str(), "eval" | "evalq" | "source") {
+                    false
+                } else {
+                    self.check_skip_loopctx_list(&lang.args, false)
+                }
+            }
+            lang::Target::Lang(target) => {
+                self.check_skip_loopctx_lang(target, false)
+                    || self.check_skip_loopctx_list(&lang.args, false)
+            }
+        }
+    }
+
+    fn check_skip_loopctx(&self, sexp: &Sexp, break_ok: bool) -> bool {
+        match &sexp.kind {
+            SexpKind::Lang(lang) => self.check_skip_loopctx_lang(lang, break_ok),
+            _ => true,
+        }
+    }
+
+    fn check_skip_loopctx_list(&self, list: &data::List, break_ok: bool) -> bool {
+        for arg in list {
+            if !self.missing(&arg.data) && !self.check_skip_loopctx(&arg.data, break_ok) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn is_loop_stop_fun(&self, name: &str) -> bool {
+        matches!(name, "function" | "for" | "while" | "repeat") && self.is_base_var(name)
+    }
+
+    fn is_loop_top_fun(&self, name: &str) -> bool {
+        matches!(name, "(" | "{" | "if") && self.is_base_var(name)
+    }
+
+    fn missing(&self, sexpr: &Sexp) -> bool {
+        // TODO
+        false
+    }
+
+    fn is_base_var(&self, name: &str) -> bool {
+        // TODO
+        true
     }
 
     fn get_inlineinfo(&self, function: &str) -> Option<bool> {

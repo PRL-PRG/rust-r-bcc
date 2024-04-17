@@ -4,6 +4,18 @@ expression: compiler.warnings
 ---
 [
     VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "a",
+    ),
+    VariableDoesNotExist(
+        "b",
+    ),
+    VariableDoesNotExist(
+        "tmp",
+    ),
+    VariableDoesNotExist(
         "a",
     ),
 ]
