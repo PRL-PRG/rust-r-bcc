@@ -863,6 +863,17 @@ mod tests {
     test_fun_noopt![call_lang_target, "function(f, x) f(x)()"];
     test_fun_noopt![call_tag, "function() list(a=1)"];
     test_fun_noopt![if_expression_noopt, "function(x) if (x) 1 else 2"];
+    test_fun_noopt![
+        while_break,
+        "
+        function(x) { 
+            n <- 1; 
+            while(T) {
+                if (n == x) break;
+                n <- n + 1;
+            } 
+        }"
+    ];
 
     test_fun_default![basic_opt, "function() NULL"];
     test_fun_default![basic_real_opt, "function() 1"];
