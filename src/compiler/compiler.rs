@@ -5,14 +5,15 @@ use crate::sexp::{
 
 #[derive(Default, Clone)]
 struct LoopContext {
-    loop_label: i32,
-    end_label: i32,
+    loop_label: LabelIdx,
+    end_label: LabelIdx,
     goto_ok: bool,
 }
 
 #[derive(Default, Clone)]
 struct CompilerContext {
     top_level: bool,
+    need_returnjmp: bool,
     tailcall: bool,
     loop_ctx: Option<LoopContext>,
     call: Option<Sexp>,
@@ -58,7 +59,7 @@ impl CompilerContext {
         }
     }
 
-    fn new_loop(ctxt: &CompilerContext, loop_label: i32, end_label: i32) -> Self {
+    fn new_loop(ctxt: &CompilerContext, loop_label: LabelIdx, end_label: LabelIdx) -> Self {
         let mut res = Self {
             loop_ctx: Some(LoopContext {
                 loop_label,
@@ -75,16 +76,27 @@ impl CompilerContext {
 /// i32 min represents NA in intepreter
 const NA: i32 = i32::MIN;
 
+const DEFLABEL: i32 = 0xeeeeeee;
+
 #[derive(Debug)]
 pub enum Warning {
     VariableDoesNotExist(String),
+    NoLoopContext,
+}
+
+type LabelIdx = usize;
+
+#[derive(Default)]
+struct Label {
+    value: i32,
+    positions: Vec<usize>,
 }
 
 struct CodeBuffer {
     bc: Bc,
     current_expr: Option<Sexp>,
     expression_buffer: Vec<i32>,
-    labels: Vec<usize>,
+    labels: Vec<Label>,
 }
 
 impl CodeBuffer {
@@ -153,27 +165,27 @@ impl CodeBuffer {
         let _ = std::mem::replace(&mut self.current_expr, orig);
     }
 
-    fn make_label(&mut self) -> i32 {
-        self.labels.push(0);
-        (self.labels.len() - 1) as i32
+    fn make_label(&mut self) -> LabelIdx {
+        self.labels.push(Label::default());
+        self.labels.len() - 1
     }
 
-    fn set_label(&mut self, label: i32) {
-        self.labels[label as usize] = self.bc.instructions.len() - 1
+    fn set_label(&mut self, label: LabelIdx) {
+        self.labels[label]
+            .positions
+            .push(self.bc.instructions.len() - 1)
     }
 
-    fn put_label_back(&mut self, label: i32) {
-        self.labels[label as usize] = self.bc.instructions.len();
+    fn put_label(&mut self, label: LabelIdx) {
+        self.labels[label as usize].value = self.bc.instructions.len() as i32;
     }
 
-    fn put_label(&mut self, label: i32) {
-        let position = self.labels[label as usize];
-        self.labels[label as usize] = self.bc.instructions.len();
-        self.bc.instructions[position] = self.bc.instructions.len() as i32;
-    }
-
-    fn get_label_back(&self, label: i32) -> i32 {
-        self.labels[label as usize] as i32
+    fn patch_labels(&mut self) {
+        for label in &self.labels {
+            for pos in &label.positions {
+                self.bc.instructions[*pos] = label.value;
+            }
+        }
     }
 }
 
@@ -250,6 +262,7 @@ impl Compiler {
         self.cmp(&target, false, false);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs);
+        self.code_buffer.patch_labels();
         std::mem::replace(&mut self.code_buffer, orig).bc
     }
 
@@ -479,7 +492,7 @@ impl Compiler {
                 let else_label = self.code_buffer.make_label();
 
                 self.code_buffer
-                    .add_instr_n(BcOp::BRIFNOT_OP, &[call_idx, else_label]);
+                    .add_instr_n(BcOp::BRIFNOT_OP, &[call_idx, DEFLABEL]);
                 self.code_buffer.set_label(else_label);
                 self.cmp(then_block, false, true);
 
@@ -497,7 +510,7 @@ impl Compiler {
                     }
                 } else {
                     let end_label = self.code_buffer.make_label();
-                    self.code_buffer.add_instr2(BcOp::GOTO_OP, end_label);
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
                     self.code_buffer.set_label(end_label);
                     self.code_buffer.put_label(else_label);
 
@@ -559,10 +572,19 @@ impl Compiler {
                 let cond = &expr.args[0].data;
                 let body = &expr.args[1].data;
 
-                if self.check_skip_loopctx(cond, false) && self.check_skip_loopctx(body, false) {
+                if self.check_skip_loopctx(cond, true) && self.check_skip_loopctx(body, true) {
                     self.cmp_while_body(expr, cond, body);
                 } else {
-                    todo!()
+                    let returnjmp = self.context.need_returnjmp;
+                    self.context.need_returnjmp = true;
+                    let long_jump_label = self.code_buffer.make_label();
+                    self.code_buffer
+                        .add_instr_n(BcOp::STARTLOOPCNTXT_OP, &[0, DEFLABEL]);
+                    self.code_buffer.set_label(long_jump_label);
+                    self.cmp_while_body(expr, cond, body);
+                    self.code_buffer.put_label(long_jump_label);
+                    self.code_buffer.add_instr2(BcOp::ENDLOOPCNTXT_OP, 0);
+                    self.context.need_returnjmp = returnjmp;
                 }
 
                 self.code_buffer.add_instr(BcOp::LDNULL_OP);
@@ -577,6 +599,17 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::GT_OP);
                 true
             }
+            "break" => match &self.context.loop_ctx {
+                Some(loop_ctx) => {
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+                    self.code_buffer.set_label(loop_ctx.end_label);
+                    true
+                }
+                None => {
+                    self.warnings.push(Warning::NoLoopContext);
+                    false
+                }
+            },
             _ => false,
         }
     }
@@ -584,7 +617,7 @@ impl Compiler {
     fn cmp_while_body(&mut self, full: &lang::Lang, cond: &Sexp, body: &Sexp) {
         let loop_label = self.code_buffer.make_label();
         let end_label = self.code_buffer.make_label();
-        self.code_buffer.put_label_back(loop_label);
+        self.code_buffer.put_label(loop_label);
 
         let tmp = CompilerContext::new_loop(&self.context, loop_label, end_label);
         let orig = std::mem::replace(&mut self.context, tmp);
@@ -593,13 +626,13 @@ impl Compiler {
 
         let callidx = self.code_buffer.add_const(full.clone().into());
         self.code_buffer
-            .add_instr_n(BcOp::BRIFNOT_OP, &[callidx, end_label]);
+            .add_instr_n(BcOp::BRIFNOT_OP, &[callidx, DEFLABEL]);
         self.code_buffer.set_label(end_label);
         self.cmp(body, false, true);
 
         self.code_buffer.add_instr(BcOp::POP_OP);
-        self.code_buffer
-            .add_instr2(BcOp::GOTO_OP, self.code_buffer.get_label_back(loop_label));
+        self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+        self.code_buffer.set_label(loop_label);
         self.code_buffer.put_label(end_label);
 
         let _ = std::mem::replace(&mut self.context, orig);
@@ -627,6 +660,7 @@ impl Compiler {
         }
     }
 
+    // default for break_ok is true
     fn check_skip_loopctx(&self, sexp: &Sexp, break_ok: bool) -> bool {
         match &sexp.kind {
             SexpKind::Lang(lang) => self.check_skip_loopctx_lang(lang, break_ok),
@@ -866,11 +900,9 @@ mod tests {
     test_fun_noopt![
         while_break,
         "
-        function(x) { 
-            n <- 1; 
+        function() { 
             while(T) {
-                if (n == x) break;
-                n <- n + 1;
+                break;
             } 
         }"
     ];
@@ -921,4 +953,13 @@ mod tests {
     test_fun_default![call_tag_opt, "function() list(a=1)"];
     test_fun_default![if_expression, "function(x) if (x) 1 else 2"];
     test_fun_default![set_var_opt, "function(x) {a <- x; a}"];
+    test_fun_default![
+        while_break_opt,
+        "
+        function() { 
+            while(T) {
+                break;
+            } 
+        }"
+    ];
 }
