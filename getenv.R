@@ -12,4 +12,4 @@ for (i in 1:length(base_list)) {
 
 
 print(length(res));
-saveRDS(res, file="temp/baseenv.dat", compress=FALSE)
+saveRDS(res, file="temp/baseenv.dat", compress=FALSE, version=2)

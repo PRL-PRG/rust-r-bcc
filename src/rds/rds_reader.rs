@@ -77,6 +77,12 @@ pub trait RDSReader: Read {
         Ok(i32::from_be_bytes(buf))
     }
 
+    fn read_complex(&mut self) -> Result<data::Complex, RDSReaderError> {
+        let real = self.read_double()?;
+        let imaginary = self.read_double()?;
+        Ok(data::Complex { real, imaginary })
+    }
+
     fn read_double(&mut self) -> Result<f64, RDSReaderError> {
         let mut buf: [u8; 8] = [0; 8];
         let len = self.read(&mut buf)?;
@@ -149,7 +155,6 @@ pub trait RDSReader: Read {
         refs: &mut RefsTable,
         flag: Flag,
     ) -> Result<Sexp, RDSReaderError> {
-        println!("{flag:?}");
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
@@ -212,6 +217,7 @@ pub trait RDSReader: Read {
 
                 todo!()
             }
+            sexptype::CPLXSXP => self.read_cplsxp()?,
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
                 println!("{x}");
@@ -312,6 +318,16 @@ pub trait RDSReader: Read {
         }
 
         Ok(SexpKind::Logic(data).into())
+    }
+
+    fn read_cplsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+        let len = self.read_len()?;
+        let mut data = vec![];
+        data.reserve(len);
+        for _ in 0..len {
+            data.push(self.read_complex()?);
+        }
+        Ok(SexpKind::Complex(data).into())
     }
 
     fn read_vecsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
@@ -530,9 +546,27 @@ pub trait RDSReader: Read {
                 }
                 Ok(env)
             }
-            _ => Err(RDSReaderError::DataError(
-                "Parent of environment must be an environment".into(),
-            )),
+            SexpKind::Nil => {
+                let env = lang::NormalEnv::new(
+                    Box::new(lang::Environment::Empty),
+                    locked == 1,
+                    frame.try_into()?,
+                    hashtab.try_into()?,
+                );
+                let env: lang::Environment = env.into();
+                let env: SexpKind = env.into();
+                let mut env: Sexp = env.into();
+                env.set_attr(attr);
+                if !refs.update_ref(index, env.clone()) {
+                    return Err(RDSReaderError::DataError(format!(
+                        "Wrong ref index {index}"
+                    )));
+                }
+                Ok(env)
+            }
+            _ => Err(RDSReaderError::DataError(format!(
+                "Parent of environment must be an environment got {parent}"
+            ))),
         }?;
         Ok(res)
     }

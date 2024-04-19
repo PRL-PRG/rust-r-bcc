@@ -1,0 +1,17 @@
+---
+source: src/rds/tests.rs
+expression: data
+---
+Sexp {
+    kind: Complex(
+        [
+            Complex {
+                real: 1.0,
+                imaginary: 2.0,
+            },
+        ],
+    ),
+    metadata: MetaData {
+        attr: None,
+    },
+}

@@ -398,3 +398,5 @@ testR![strsxp_02, "c('a', 'ahoj')"];
 testR![closxp05, "function(a, b = 0) {x <- c(a, 1); x[[b]];}"];
 testR![bcsxp_01, "compiler::cmpfun(function(a, b = 0) {x <- c(a, 1); x[[b]];})"];
 testR![closxp06, "function(x) x + 1"];
+testR![cplsxp01, "1+2i"];
+testR![cplsxp02, "c(1+2i, 10i)"];

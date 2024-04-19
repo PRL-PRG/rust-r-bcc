@@ -175,7 +175,15 @@ pub trait RDSWriter: Write {
                 Ok(())
             }
             SexpKind::Int(ints) => self.write_intvec(ints),
-            SexpKind::Complex(_) => todo!(),
+            SexpKind::Complex(complexes) => {
+                self.write_len(complexes.len())?;
+
+                for val in complexes {
+                    self.write_double(val.real)?;
+                    self.write_double(val.imaginary)?;
+                }
+                Ok(())
+            }
             SexpKind::Str(strs) => {
                 self.write_len(strs.len())?;
                 for s in strs {
