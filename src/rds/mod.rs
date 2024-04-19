@@ -148,6 +148,7 @@ mod sexptype {
     don't need to be handled as a special case.  lt */
     pub const ATTRLANGSXP: u8 = 240;
     pub const ATTRLISTSXP: u8 = 239;
+    pub const ALTREP_SXP: u8 = 238;
 }
 
 // This is defined in Defn.h
@@ -181,6 +182,7 @@ impl From<&Sexp> for Flag {
             SexpKind::MissingArg => sexptype::MISSINGARG_SXP,
             SexpKind::BaseNamespace => sexptype::BASENAMESPACE_SXP,
             SexpKind::Buildin(_) => sexptype::BUILTINSXP,
+            SexpKind::NAString => sexptype::CHARSXP,
         };
 
         let str_fmt = match value.kind {

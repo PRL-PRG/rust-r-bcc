@@ -408,6 +408,7 @@ pub enum SexpKind {
 
     // vecs
     Char(Vec<char>),
+    NAString,
     Logic(Vec<bool>),
     Real(Vec<f64>),
     Int(Vec<i32>),

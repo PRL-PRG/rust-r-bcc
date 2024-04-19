@@ -194,7 +194,8 @@ pub trait RDSWriter: Write {
                     super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                 )?;
                 self.write_charsxp(sym.data.as_str())
-            },
+            }
+            SexpKind::NAString => self.write_int(-1),
         }?;
         if flag.has_attributes
             && flag.sexp_type != super::sexptype::REFSXP
@@ -233,7 +234,7 @@ pub trait RDSWriter: Write {
         bc: &Bc,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_count : &mut i32,
+        reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(super::sexptype::INTSXP as i32)?;
@@ -246,7 +247,7 @@ pub trait RDSWriter: Write {
         consts: &Vec<Sexp>,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_count : &mut i32,
+        reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(consts.len() as i32)?;
@@ -282,7 +283,7 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_count : &mut i32,
+        reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         if let Some(pos) = reps
@@ -318,7 +319,14 @@ pub trait RDSWriter: Write {
 
         match &lang.target {
             lang::Target::Lang(lang) => {
-                self.write_bclang(lang.as_ref(), &MetaData::default(), refs, reps, reps_count, reps_visit)?;
+                self.write_bclang(
+                    lang.as_ref(),
+                    &MetaData::default(),
+                    refs,
+                    reps,
+                    reps_count,
+                    reps_visit,
+                )?;
             }
             lang::Target::Sym(sym) => {
                 // padding dont ask why
@@ -327,7 +335,14 @@ pub trait RDSWriter: Write {
             }
         }
 
-        self.write_bclist(&lang.args, &MetaData::default(), refs, reps, reps_count, reps_visit)?;
+        self.write_bclist(
+            &lang.args,
+            &MetaData::default(),
+            refs,
+            reps,
+            reps_count,
+            reps_visit,
+        )?;
 
         Ok(())
     }
@@ -338,7 +353,7 @@ pub trait RDSWriter: Write {
         metadata: &MetaData,
         refs: &mut RefsTable,
         reps: &Vec<Sexp>,
-        reps_count : &mut i32,
+        reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         // special case for empty list
@@ -396,7 +411,14 @@ pub trait RDSWriter: Write {
 
             match &item.data.kind {
                 SexpKind::Lang(lang) => {
-                    self.write_bclang(lang, &item.data.metadata, refs, reps, reps_count, reps_visit)?;
+                    self.write_bclang(
+                        lang,
+                        &item.data.metadata,
+                        refs,
+                        reps,
+                        reps_count,
+                        reps_visit,
+                    )?;
                 }
                 _ => {
                     self.write_int(0)?;

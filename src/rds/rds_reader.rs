@@ -140,11 +140,16 @@ pub trait RDSReader: Read {
         self.read_item_flags(refs, flag)
     }
 
+    fn lookup_class(&self, class_sym: &str, package_sym: &str) -> Result<Sexp, RDSReaderError> {
+        todo!()
+    }
+
     fn read_item_flags(
         &mut self,
         refs: &mut RefsTable,
         flag: Flag,
     ) -> Result<Sexp, RDSReaderError> {
+        println!("{flag:?}");
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
@@ -177,6 +182,35 @@ pub trait RDSReader: Read {
                 let len = self.read_int()?;
                 let name = self.read_string_len(len)?;
                 SexpKind::Buildin(name.as_str().into()).into()
+            }
+            sexptype::ALTREP_SXP => {
+                let info = self.read_item(refs)?;
+                let state = self.read_item(refs)?;
+                let attr = self.read_item(refs)?;
+                let info = match info.kind {
+                    SexpKind::List(list) if list.len() == 3 => list,
+                    _ => {
+                        return Err(RDSReaderError::DataError(
+                            "Wrong info in ALTREP sexp".into(),
+                        ))
+                    }
+                };
+                let class_sym = &info[0];
+                let package_sym = &info[1];
+                let SexpKind::Int(class_type) = &info[2].data.kind else {
+                    return Err(RDSReaderError::DataError(
+                        "Wrong class type in info for ALTREP".into(),
+                    ));
+                };
+                let class_type = if class_type.len() == 1 {
+                    class_type[0]
+                } else {
+                    return Err(RDSReaderError::DataError(
+                        "Wrong class type in info for ALTREP".into(),
+                    ));
+                };
+
+                todo!()
             }
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
@@ -359,6 +393,9 @@ pub trait RDSReader: Read {
 
     fn read_charsxp(&mut self) -> Result<Sexp, RDSReaderError> {
         let len = self.read_int()? as usize;
+        if len == usize::MAX {
+            return Ok(SexpKind::NAString.into());
+        }
 
         let mut data = vec![];
         data.reserve(len);
@@ -383,6 +420,8 @@ pub trait RDSReader: Read {
             } = item
             {
                 data.push(String::from_utf8(chars.iter().map(|x| *x as u8).collect())?);
+            } else if item.kind == SexpKind::NAString {
+                // TODO ask Filip
             } else {
                 return Err(RDSReaderError::DataError(
                     "Strsxp must be created from charsxp".into(),

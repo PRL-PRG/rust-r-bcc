@@ -76,6 +76,8 @@ impl CompilerContext {
 /// i32 min represents NA in intepreter
 const NA: i32 = i32::MIN;
 
+// placeholder label which is inserted before patching
+// I choose this value since I wanted to be easily visible
 const DEFLABEL: i32 = 0xeeeeeee;
 
 #[derive(Debug)]
@@ -567,7 +569,9 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
                 true
             }
-            "[[" => todo!(),
+            "[[" => {
+                todo!()
+            }
             "while" => {
                 let cond = &expr.args[0].data;
                 let body = &expr.args[1].data;
@@ -906,6 +910,25 @@ mod tests {
             } 
         }"
     ];
+    test_fun_noopt![
+        while_break_more,
+        "
+        function(x) { 
+            n <- 0;
+            while(T) {
+                if (n > x) break;
+                n <- n + 1;
+            } 
+        }"
+    ];
+    test_fun_noopt![
+        basefun_shadowed,
+        "
+        function(x) {
+            list <- function(...) print(1);
+            list(x);
+        }"
+    ];
 
     test_fun_default![basic_opt, "function() NULL"];
     test_fun_default![basic_real_opt, "function() 1"];
@@ -962,4 +985,24 @@ mod tests {
             } 
         }"
     ];
+    test_fun_default![
+        while_break_more_opt,
+        "
+        function(x) { 
+            n <- 0;
+            while(T) {
+                if (n > x) break;
+                n <- n + 1;
+            } 
+        }"
+    ];
+    test_fun_default![
+        basefun_shadowed_opt,
+        "
+        function(x) {
+            list <- function(...) print(1);
+            list(x);
+        }"
+    ];
+
 }

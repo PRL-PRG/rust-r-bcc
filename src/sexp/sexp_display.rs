@@ -65,6 +65,7 @@ impl Display for SexpKind {
             SexpKind::Bc(bc) => write!(f, "{bc}"),
             SexpKind::BaseNamespace => write!(f, "base namespace"),
             SexpKind::Buildin(sym) => write!(f, "{sym}"),
+            SexpKind::NAString => write!(f, "NASTRING"),
         }
     }
 }

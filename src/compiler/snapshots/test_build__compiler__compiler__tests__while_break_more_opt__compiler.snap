@@ -1,0 +1,15 @@
+---
+source: src/compiler/compiler.rs
+expression: compiler.warnings
+---
+[
+    VariableDoesNotExist(
+        "T",
+    ),
+    VariableDoesNotExist(
+        "n",
+    ),
+    VariableDoesNotExist(
+        "n",
+    ),
+]
