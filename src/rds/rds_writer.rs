@@ -145,7 +145,11 @@ pub trait RDSWriter: Write {
                 self.write_envsxp(env, &sexp.metadata, refs)
             }
             SexpKind::Environment(_) => Ok(()),
-            SexpKind::Promise => todo!(),
+            SexpKind::Promise {
+                environment: _,
+                expr: _,
+                value: _,
+            } => todo!(),
             SexpKind::Lang(lang) => self.write_langsxp(lang, &sexp.metadata, refs),
             SexpKind::Bc(bc) => self.write_bc(bc, refs),
             SexpKind::Char(chars) => {

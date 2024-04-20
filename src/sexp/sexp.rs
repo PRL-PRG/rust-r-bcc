@@ -401,7 +401,11 @@ pub enum SexpKind {
     // language contructs
     Closure(lang::Closure),
     Environment(lang::Environment),
-    Promise,
+    Promise {
+        environment: lang::Environment,
+        expr: Box<Sexp>,
+        value: Box<Sexp>,
+    },
     Lang(lang::Lang),
     Bc(Bc),
     Buildin(lang::Sym),

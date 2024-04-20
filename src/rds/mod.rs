@@ -169,7 +169,11 @@ impl From<&Sexp> for Flag {
             SexpKind::Environment(lang::Environment::Base) => sexptype::BASEENV_SXP,
             SexpKind::Environment(lang::Environment::Empty) => sexptype::EMPTYENV_SXP,
             SexpKind::Environment(lang::Environment::Normal(_)) => sexptype::ENVSXP,
-            SexpKind::Promise => sexptype::PROMSXP,
+            SexpKind::Promise {
+                environment: _,
+                expr: _,
+                value: _,
+            } => sexptype::PROMSXP,
             SexpKind::Lang(_) => sexptype::LANGSXP,
             SexpKind::Bc(_) => sexptype::BCODESXP,
             SexpKind::Char(_) => sexptype::CHARSXP,

@@ -42,7 +42,11 @@ impl Display for SexpKind {
             SexpKind::Nil => write!(f, "nil"),
             SexpKind::Closure(closure) => write!(f, "{closure}"),
             SexpKind::Environment(env) => write!(f, "env: ({env})"),
-            SexpKind::Promise => todo!(),
+            SexpKind::Promise {
+                environment: _,
+                expr: _,
+                value: _,
+            } => todo!(),
             SexpKind::Lang(lang) => write!(f, "{lang}"),
             SexpKind::Char(chars) => write!(f, "'{}'", join_string(chars, "")),
             SexpKind::Logic(logs) => write!(f, "[{}]", join_string(logs, ", ")),

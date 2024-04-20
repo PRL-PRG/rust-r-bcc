@@ -3,192 +3,15 @@ use crate::sexp::{
     sexp::{data, lang, MetaData, Sexp, SexpKind},
 };
 
-#[derive(Default, Clone)]
-struct LoopContext {
-    loop_label: LabelIdx,
-    end_label: LabelIdx,
-    goto_ok: bool,
-}
-
-#[derive(Default, Clone)]
-struct CompilerContext {
-    top_level: bool,
-    need_returnjmp: bool,
-    tailcall: bool,
-    loop_ctx: Option<LoopContext>,
-    call: Option<Sexp>,
-}
-
-impl CompilerContext {
-    fn new_top(ctxt: &CompilerContext) -> Self {
-        Self {
-            top_level: true,
-            tailcall: true,
-            call: None,
-            ..ctxt.clone()
-        }
-    }
-
-    fn new_promise(ctxt: &CompilerContext) -> Self {
-        Self {
-            top_level: false,
-            tailcall: true,
-            ..ctxt.clone()
-        }
-    }
-
-    fn new_call(ctxt: &CompilerContext, call: Sexp) -> Self {
-        Self {
-            call: Some(call.clone()),
-            ..ctxt.clone()
-        }
-    }
-
-    fn new_arg(ctxt: &CompilerContext) -> Self {
-        Self {
-            tailcall: false,
-            top_level: false,
-            loop_ctx: match &ctxt.loop_ctx {
-                Some(ctx) => Some(LoopContext {
-                    goto_ok: false,
-                    ..ctx.clone()
-                }),
-                None => None,
-            },
-            ..ctxt.clone()
-        }
-    }
-
-    fn new_loop(ctxt: &CompilerContext, loop_label: LabelIdx, end_label: LabelIdx) -> Self {
-        let mut res = Self {
-            loop_ctx: Some(LoopContext {
-                loop_label,
-                end_label,
-                goto_ok: true,
-            }),
-            ..ctxt.clone()
-        };
-        res.tailcall = false;
-        res
-    }
-}
-
-/// i32 min represents NA in intepreter
-const NA: i32 = i32::MIN;
-
-// placeholder label which is inserted before patching
-// I choose this value since I wanted to be easily visible
-const DEFLABEL: i32 = 0xeeeeeee;
+use super::{
+    code_buf::{CodeBuffer, DEFLABEL},
+    compiler_context::CompilerContext,
+};
 
 #[derive(Debug)]
 pub enum Warning {
     VariableDoesNotExist(String),
     NoLoopContext,
-}
-
-type LabelIdx = usize;
-
-#[derive(Default)]
-struct Label {
-    value: i32,
-    positions: Vec<usize>,
-}
-
-struct CodeBuffer {
-    bc: Bc,
-    current_expr: Option<Sexp>,
-    expression_buffer: Vec<i32>,
-    labels: Vec<Label>,
-}
-
-impl CodeBuffer {
-    fn new() -> Self {
-        Self {
-            bc: Bc::new(),
-            current_expr: None,
-            expression_buffer: vec![NA], // first instruction is version and does not have a source
-            labels: vec![],
-        }
-    }
-
-    fn new_with_expr(curr_expr: Sexp) -> Self {
-        Self {
-            bc: Bc::new(),
-            current_expr: Some(curr_expr),
-            expression_buffer: vec![NA], // first instruction is version and does not have a source
-            labels: vec![],
-        }
-    }
-
-    fn insert_currexpr(&mut self, bc_count: usize) {
-        if self.current_expr.is_some() {
-            let expr = self.current_expr.clone().unwrap();
-            let index = self.add_const(expr.clone());
-            self.expression_buffer
-                .append(&mut (0..bc_count).map(|_| index).collect());
-        }
-    }
-
-    fn add_instr(&mut self, op: BcOp) {
-        assert_eq!(op.arity(), 0, "Wrong arity");
-        self.bc.instructions.push(op.into());
-        self.insert_currexpr(1);
-    }
-
-    fn add_instr2(&mut self, op: BcOp, idx: i32) {
-        assert_eq!(op.arity(), 1, "Wrong arity");
-        self.bc.instructions.push(op.into());
-        self.bc.instructions.push(idx);
-        self.insert_currexpr(2);
-    }
-
-    fn add_instr_n(&mut self, op: BcOp, idxs: &[i32]) {
-        assert_eq!(op.arity(), idxs.len(), "Wrong arity");
-        self.bc.instructions.push(op.into());
-        self.bc.instructions.extend_from_slice(idxs);
-        self.insert_currexpr(1 + idxs.len());
-    }
-
-    fn add_const(&mut self, val: Sexp) -> i32 {
-        match self.bc.constpool.iter().position(|x| x == &val) {
-            Some(idx) => idx as i32,
-            None => {
-                self.bc.constpool.push(val);
-                (self.bc.constpool.len() - 1) as i32
-            }
-        }
-    }
-
-    fn set_current_expr(&mut self, sexp: Sexp) -> Option<Sexp> {
-        std::mem::replace(&mut self.current_expr, Some(sexp))
-    }
-
-    fn restore_current_expr(&mut self, orig: Option<Sexp>) {
-        let _ = std::mem::replace(&mut self.current_expr, orig);
-    }
-
-    fn make_label(&mut self) -> LabelIdx {
-        self.labels.push(Label::default());
-        self.labels.len() - 1
-    }
-
-    fn set_label(&mut self, label: LabelIdx) {
-        self.labels[label]
-            .positions
-            .push(self.bc.instructions.len() - 1)
-    }
-
-    fn put_label(&mut self, label: LabelIdx) {
-        self.labels[label as usize].value = self.bc.instructions.len() as i32;
-    }
-
-    fn patch_labels(&mut self) {
-        for label in &self.labels {
-            for pos in &label.positions {
-                self.bc.instructions[*pos] = label.value;
-            }
-        }
-    }
 }
 
 pub struct Compiler {
@@ -286,7 +109,13 @@ impl Compiler {
                 }
             }
             SexpKind::Environment(_) => todo!(),
-            SexpKind::Promise => todo!(),
+            SexpKind::Promise {
+                environment: _,
+                expr: _,
+                value: _,
+            } => {
+                todo!()
+            }
             SexpKind::Lang(lang) => self.cmp_call(lang),
             _ => {
                 let ci = self.code_buffer.add_const(sexp.clone());
@@ -376,7 +205,11 @@ impl Compiler {
                 SexpKind::MissingArg => todo!(),
                 SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
                 SexpKind::Bc(_) => todo!(),
-                SexpKind::Promise => todo!(),
+                SexpKind::Promise {
+                    environment: _,
+                    expr: _,
+                    value: _,
+                } => todo!(),
                 SexpKind::Sym(_) | SexpKind::Lang(_) => {
                     let curr = self.code_buffer.current_expr.clone();
                     let code = self.gen_code(&arg.data, curr.as_ref());
@@ -1004,5 +837,4 @@ mod tests {
             list(x);
         }"
     ];
-
 }

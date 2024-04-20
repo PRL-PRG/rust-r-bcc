@@ -217,6 +217,7 @@ pub trait RDSReader: Read {
 
                 todo!()
             }
+            sexptype::PROMSXP => self.read_promsxp(flag, refs)?,
             sexptype::CPLXSXP => self.read_cplsxp()?,
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
@@ -726,6 +727,42 @@ pub trait RDSReader: Read {
                 "Wrong sexp type in bc lang read {type_val}"
             ))),
         }
+    }
+
+    fn read_promsxp(&mut self, flags: Flag, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+        let attr = if flags.has_attributes {
+            Some(self.read_item(refs)?)
+        } else {
+            None
+        };
+        let environment = if flags.has_tag {
+            let flag = self.read_flags()?;
+            if !matches!(
+                flag.sexp_type,
+                sexptype::EMPTYENV_SXP
+                    | sexptype::ENVSXP
+                    | sexptype::BASEENV_SXP
+                    | sexptype::BASENAMESPACE_SXP
+                    | sexptype::GLOBALENV_SXP
+            ) {
+                return Err(RDSReaderError::DataError("Expected environment".into()));
+            }
+            let super::SexpKind::Environment(env) = self.read_envsxp(refs)?.kind else {
+                unreachable!()
+            };
+            env
+        } else {
+            lang::Environment::Empty
+        };
+
+        let value = self.read_item(refs)?;
+        let expr = self.read_item(refs)?;
+        let result = SexpKind::Promise {
+            environment,
+            value: Box::new(value),
+            expr: Box::new(expr),
+        };
+        Ok(result.into())
     }
 }
 
