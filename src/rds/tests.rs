@@ -400,3 +400,13 @@ testR![bcsxp_01, "compiler::cmpfun(function(a, b = 0) {x <- c(a, 1); x[[b]];})"]
 testR![closxp06, "function(x) x + 1"];
 testR![cplsxp01, "1+2i"];
 testR![cplsxp02, "c(1+2i, 10i)"];
+
+testR![
+    basefun_shadowed,
+    "
+    compiler::cmpfun(function(x) {
+        list <- function(...) print(1);
+        list(x);
+    }, options=list(optimize=0))"
+];
+

@@ -1,0 +1,46 @@
+My compilation:
+function(x)
+instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	MAKEPROM_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [{(<-(list, function(list: [(...) missing], print([1]), nil)), list(x)), {, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	MAKEPROM_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [<-(list, function(list: [(...) missing], print([1]), nil)), <-, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [list, <-(list, function(list: [(...) missing], print([1]), nil)), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, instruction :
+	GETFUN_OP 1
+	PUSHCONSTARG_OP 2
+	MAKEPROM_OP 3
+	PUSHNULLARG_OP
+	CALL_OP 0
+	RETURN_OP
+constant pool : [function(list: [(...) missing], print([1]), nil), function, list: [(...) missing], instruction :
+	GETFUN_OP 1
+	PUSHCONSTARG_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [print([1]), print, [1], (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [list(x), list, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [x, list(x), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+
+(env : global env)
