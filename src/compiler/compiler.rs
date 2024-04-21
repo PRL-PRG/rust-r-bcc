@@ -14,14 +14,29 @@ pub enum Warning {
     NoLoopContext,
 }
 
+struct InlineInfo {
+    guard: bool,
+    base_var: bool,
+}
+
 pub struct Compiler {
     options: CompilerOptions,
     context: CompilerContext,
     code_buffer: CodeBuffer,
 
-    environment: lang::Environment,
     pub warnings: Vec<Warning>,
+
+    globalenv: lang::Environment,
+    baseenv: Option<lang::NormalEnv>,
+    namespacebase: Option<lang::NormalEnv>,
 }
+
+const LANG_FUNCS: [&str; 46] = [
+    "^", "~", "<", "<<-", "<=", "<-", "=", "==", ">", ">=", "|", "||", "-", ":", "!", "!=", "/",
+    "(", "[", "[<-", "[[", "[[<-", "{", "@", "$", "$<-", "*", "&", "&&", "%/%", "%*%", "%%", "+",
+    "::", ":::", "@<-", "break", "for", "function", "if", "next", "repeat", "while", "local",
+    "return", "switch",
+];
 
 impl Compiler {
     pub fn new() -> Self {
@@ -30,8 +45,10 @@ impl Compiler {
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            environment: lang::Environment::Global,
+            globalenv: lang::Environment::Global,
             warnings: vec![],
+            baseenv: None,
+            namespacebase: None,
         }
     }
 
@@ -41,14 +58,24 @@ impl Compiler {
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            environment: lang::Environment::Global,
+            globalenv: lang::Environment::Global,
             warnings: vec![],
+            baseenv: None,
+            namespacebase: None,
         }
+    }
+
+    pub fn set_baseenv(&mut self, env: lang::NormalEnv) {
+        self.baseenv = Some(env);
+    }
+
+    pub fn set_namespacebase(&mut self, env: lang::NormalEnv) {
+        self.namespacebase = Some(env);
     }
 
     pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
         let mut closure = closure;
-        self.environment = lang::NormalEnv::new(
+        self.globalenv = lang::NormalEnv::new(
             Box::new(closure.environment),
             false,
             lang::ListFrame::new(
@@ -69,7 +96,7 @@ impl Compiler {
         let body =
             SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
         closure.body = Box::new(body);
-        let lang::Environment::Normal(env) = &mut self.environment else {
+        let lang::Environment::Normal(env) = &mut self.globalenv else {
             unreachable!()
         };
         closure.environment = std::mem::replace(env.parent.as_mut(), lang::Environment::Global);
@@ -116,7 +143,7 @@ impl Compiler {
             } => {
                 todo!()
             }
-            SexpKind::Lang(lang) => self.cmp_call(lang),
+            SexpKind::Lang(lang) => self.cmp_call(lang, true),
             _ => {
                 let ci = self.code_buffer.add_const(sexp.clone());
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
@@ -151,7 +178,7 @@ impl Compiler {
         }
     }
 
-    fn cmp_call(&mut self, call: &lang::Lang) {
+    fn cmp_call(&mut self, call: &lang::Lang, inline_ok: bool) {
         // set up state
         let mut sexp_tmp = std::mem::take(&mut self.code_buffer.current_expr);
         let orig = self.code_buffer.set_current_expr(call.clone().into());
@@ -249,7 +276,7 @@ impl Compiler {
     }
 
     fn var_exist(&self, name: &str) -> bool {
-        self.environment.find_local_var(name).is_some()
+        self.globalenv.find_local_var(name).is_some()
     }
 
     fn create_expression_loc(&mut self) -> Sexp {
@@ -311,6 +338,33 @@ impl Compiler {
             return false;
         }
 
+        let info = info.unwrap();
+
+        if info.guard {
+            let tailcall = self.context.tailcall;
+            self.context.tailcall = false;
+            let expr_index = self.code_buffer.add_const(expr.clone().into());
+            let end_label = self.code_buffer.make_label();
+            self.code_buffer
+                .add_instr_n(BcOp::BASEGUARD_OP, &[expr_index, DEFLABEL]);
+            self.code_buffer.set_label(end_label);
+            if !self.handle_inline(sym, expr, info) {
+                self.cmp_call(expr, false);
+            }
+
+            self.code_buffer.put_label(end_label);
+            if tailcall {
+                self.code_buffer.add_instr(BcOp::RETURN_OP);
+            }
+            self.context.tailcall = tailcall;
+
+            true
+        } else {
+            self.handle_inline(sym, expr, info)
+        }
+    }
+
+    fn handle_inline(&mut self, sym: &str, expr: &lang::Lang, info: InlineInfo) -> bool {
         match sym {
             "if" => {
                 let cond = &expr.args[0].data;
@@ -447,8 +501,64 @@ impl Compiler {
                     false
                 }
             },
+            _ if info.base_var => {
+                let index = self.code_buffer.add_const(expr.target.clone().into());
+                self.code_buffer.add_instr2(BcOp::GETBUILTIN_OP, index);
+                self.cmp_builtin_args(&expr.args);
+
+                let index = self.code_buffer.add_const(expr.clone().into());
+
+                self.code_buffer.add_instr2(BcOp::CALLBUILTIN_OP, index);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
+            }
             _ => false,
         }
+    }
+
+    fn cmp_builtin_args(&mut self, args: &data::List) {
+        let tmp = CompilerContext::new_promise(&self.context);
+        let mut orig_context = std::mem::replace(&mut self.context, tmp);
+
+        for arg in args {
+            match &arg.data.kind {
+                SexpKind::MissingArg => todo!(),
+                SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
+                SexpKind::Bc(_) => todo!(),
+                SexpKind::Promise {
+                    environment: _,
+                    expr: _,
+                    value: _,
+                } => todo!(),
+                SexpKind::Sym(_) | SexpKind::Lang(_) => {
+                    self.cmp(&arg.data, false, true);
+                    self.code_buffer.add_instr(BcOp::PUSHARG_OP);
+                }
+                SexpKind::Nil => {
+                    self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                SexpKind::Logic(logs) if logs.len() == 1 && logs[0] => {
+                    self.code_buffer.add_instr(BcOp::PUSHTRUEARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                SexpKind::Logic(logs) if logs.len() == 1 && !logs[0] => {
+                    self.code_buffer.add_instr(BcOp::PUSHFALSEARG_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                _ => {
+                    let index = self.code_buffer.add_const(arg.data.clone());
+                    self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
+                    self.cmp_tag(&arg.tag);
+                }
+            }
+        }
+
+        std::mem::swap(&mut self.context, &mut orig_context);
     }
 
     fn cmp_while_body(&mut self, full: &lang::Lang, cond: &Sexp, body: &Sexp) {
@@ -522,19 +632,37 @@ impl Compiler {
         matches!(name, "(" | "{" | "if") && self.is_base_var(name)
     }
 
-    fn missing(&self, sexpr: &Sexp) -> bool {
+    fn missing(&self, sexp: &Sexp) -> bool {
         // TODO
         false
     }
 
-    fn is_base_var(&self, name: &str) -> bool {
-        // TODO
-        true
+    fn find_baseenv(&self, name: &str) -> Option<&Sexp> {
+        match &self.baseenv {
+            Some(env) => env.find_local_var(name),
+            None => None,
+        }
     }
 
-    fn get_inlineinfo(&self, function: &str) -> Option<bool> {
-        if self.options.inline_level > 0 {
-            Some(false)
+    fn find_namespacebase(&self, name: &str) -> Option<&Sexp> {
+        match &self.namespacebase {
+            Some(env) => env.find_local_var(name),
+            None => None,
+        }
+    }
+
+    fn is_base_var(&self, name: &str) -> bool {
+        self.find_baseenv(name).is_some() || self.find_namespacebase(name).is_some()
+    }
+
+    fn get_inlineinfo(&self, function: &str) -> Option<InlineInfo> {
+        if self.options.inline_level > 0 && self.is_base_var(function) {
+            let info = InlineInfo {
+                guard: !(self.options.inline_level >= 3
+                    || (self.options.inline_level >= 2 && LANG_FUNCS.contains(&function))),
+                base_var: self.is_base_var(function),
+            };
+            Some(info)
         } else {
             None
         }
@@ -639,17 +767,30 @@ mod tests {
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
                     let path_comp = path_comp.as_str();
+                    let path_env = format!("temp/{}_compiler_env.dat", stringify!($name));
+                    let path_env = path_env.as_str();
+
+                    // input data serialized
                     let mut command = std::process::Command::new("./create_serdata.R")
                         .args(["-d", $code, path])
                         .spawn()
                         .unwrap();
                     assert!(command.wait().unwrap().success());
+
+                    // compiled data serialized
                     let mut command = std::process::Command::new("./create_serdata.R")
                         .args([
                             "-d",
                             format!("compiler::cmpfun({})", $code).as_str(),
                             path_comp,
                         ])
+                        .spawn()
+                        .unwrap();
+                    assert!(command.wait().unwrap().success());
+
+                    // base environment
+                    let mut command = std::process::Command::new("./baseenv.R")
+                        .args([path_env])
                         .spawn()
                         .unwrap();
                     assert!(command.wait().unwrap().success());
@@ -670,12 +811,24 @@ mod tests {
                         data: correct,
                     } = file.read_rds().unwrap();
 
+                    let mut file = std::fs::File::open(path_env).unwrap();
+                    let RDSResult {
+                        header: _,
+                        data: baseenv,
+                    } = file.read_rds().unwrap();
+
                     println!("{}", input);
 
                     let mut compiler = Compiler::new();
                     let SexpKind::Closure(cl) = input.kind else {
                         unreachable!();
                     };
+                    let SexpKind::Environment(lang::Environment::Normal(baseenv)) = baseenv.kind
+                    else {
+                        unreachable!()
+                    };
+
+                    compiler.set_baseenv(baseenv);
                     let bc = compiler.cmpfun(cl);
 
                     insta::assert_debug_snapshot!(compiler.warnings);

@@ -1,4 +1,4 @@
-use crate::sexp::sexp::{lang, Sexp};
+use crate::sexp::sexp::Sexp;
 
 use super::code_buf::LabelIdx;
 
@@ -16,8 +16,6 @@ pub struct CompilerContext {
     pub tailcall: bool,
     pub loop_ctx: Option<LoopContext>,
     pub call: Option<Sexp>,
-    pub baseenv: Option<lang::NormalEnv>,
-    pub namespacebase: Option<lang::NormalEnv>,
 }
 
 impl CompilerContext {
