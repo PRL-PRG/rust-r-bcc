@@ -520,7 +520,6 @@ impl Compiler {
                 }
             },
             "function" => {
-                println!("{expr}");
                 let forms = &expr.args[0].data;
                 let body = &expr.args[1].data;
 
@@ -533,7 +532,14 @@ impl Compiler {
 
                 let comp_body = self.gen_code(body, None);
 
-                let index = self.code_buffer.add_const(comp_body.into());
+                let index = self.code_buffer.add_const(
+                    SexpKind::Vec(vec![
+                        SexpKind::List(forms.clone()).into(),
+                        comp_body.into(),
+                        SexpKind::Nil.into(),
+                    ])
+                    .into(),
+                );
                 self.code_buffer.add_instr2(BcOp::MAKECLOSURE_OP, index);
 
                 let _ = std::mem::replace(&mut self.context, orig);
