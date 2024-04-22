@@ -432,6 +432,16 @@ pub trait RDSWriter: Write {
                         reps_visit,
                     )?;
                 }
+                SexpKind::List(list) => {
+                    self.write_bclist(
+                        list,
+                        &item.data.metadata,
+                        refs,
+                        reps,
+                        reps_count,
+                        reps_visit,
+                    )?;
+                }
                 _ => {
                     self.write_int(0)?;
                     self.write_item(&item.data, refs)?;
@@ -627,16 +637,7 @@ fn create_reps_inner(
 
     match &sexp.kind {
         SexpKind::List(list) => {
-            if temp.iter().any(|x| x == sexp) {
-                reps.push(sexp.clone());
-                return;
-            }
-
-            temp.push(sexp.clone());
-
-            for item in list {
-                create_reps_inner(&item.data, refs, reps, temp);
-            }
+            create_reps_inner_list(sexp, list.as_slice(), refs, reps, temp);
         }
         SexpKind::Lang(lang) => {
             if temp.iter().any(|x| x == sexp) {
@@ -647,7 +648,13 @@ fn create_reps_inner(
             temp.push(sexp.clone());
 
             create_reps_inner(&lang.target.clone().into(), refs, reps, temp);
-            create_reps_inner(&SexpKind::List(lang.args.clone()).into(), refs, reps, temp);
+            create_reps_inner_list(
+                &SexpKind::List(lang.args.clone()).into(),
+                lang.args.as_slice(),
+                refs,
+                reps,
+                temp,
+            );
         }
         SexpKind::Bc(bc) => {
             for c in &bc.constpool {
@@ -655,6 +662,28 @@ fn create_reps_inner(
             }
         }
         _ => (),
+    }
+}
+
+fn create_reps_inner_list(
+    sexp: &Sexp,
+    list: &[data::TaggedSexp],
+    refs: &mut RefsTable,
+    reps: &mut Vec<Sexp>,
+    temp: &mut Vec<Sexp>,
+) {
+    if reps.iter().any(|x| x == sexp) {
+        return;
+    }
+    if temp.iter().any(|x| x == sexp) {
+        reps.push(sexp.clone());
+        return;
+    }
+
+    temp.push(sexp.clone());
+
+    for item in list {
+        create_reps_inner(&item.data, refs, reps, temp);
     }
 }
 

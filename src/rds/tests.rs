@@ -410,3 +410,20 @@ testR![
     }, options=list(optimize=0))"
 ];
 
+testR![
+    basefun_shadowed_opt,
+    "
+    compiler::cmpfun(function(x) {
+        list <- function(...) print(1);
+        list(x);
+    })"
+];
+
+testR![
+    tmp,
+    "
+    compiler::cmpfun(function(x) {
+        function(...) 1;
+    }, options=list(optimize=0))"
+];
+
