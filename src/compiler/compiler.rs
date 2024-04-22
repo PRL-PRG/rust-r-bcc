@@ -623,7 +623,7 @@ impl Compiler {
             _ if info.base_var && self.builtins.contains(sym) => {
                 let index = self.code_buffer.add_const(expr.target.clone().into());
                 self.code_buffer.add_instr2(BcOp::GETBUILTIN_OP, index);
-                self.cmp_builtin_args(&expr.args);
+                self.cmp_builtin_args(&expr.args, false);
 
                 let index = self.code_buffer.add_const(expr.clone().into());
 
@@ -647,7 +647,8 @@ impl Compiler {
         }
     }
 
-    fn cmp_builtin_args(&mut self, args: &data::List) {
+    // missing_ok default false
+    fn cmp_builtin_args(&mut self, args: &data::List, missing_ok: bool) {
         let tmp = CompilerContext::new_arg(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
@@ -661,7 +662,11 @@ impl Compiler {
                     expr: _,
                     value: _,
                 } => todo!(),
-                SexpKind::Sym(_) | SexpKind::Lang(_) => {
+                SexpKind::Sym(sym) => {
+                    self.cmp_sym(sym, missing_ok);
+                    self.code_buffer.add_instr(BcOp::PUSHARG_OP);
+                }
+                SexpKind::Lang(_) => {
                     self.cmp(&arg.data, false, true);
                     self.code_buffer.add_instr(BcOp::PUSHARG_OP);
                 }
