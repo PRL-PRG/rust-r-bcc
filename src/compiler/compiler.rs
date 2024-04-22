@@ -336,12 +336,72 @@ impl Compiler {
         }
     }
 
-    fn cmp_dispatch(&mut self) {
+    // missing_ok default is true
+    fn cmp_dispatch(
+        &mut self,
+        start: BcOp,
+        end: BcOp,
+        expr: &lang::Lang,
+        missing_ok: bool,
+    ) -> bool {
         todo!()
     }
 
-    fn cmp_subset_dispatch(&mut self) {
-        todo!()
+    fn cmp_subset_dispatch(
+        &mut self,
+        start: BcOp,
+        end: BcOp,
+        rank: bool,
+        expr: &lang::Lang,
+    ) -> bool {
+        let tmp = CompilerContext::new_arg(&self.context);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        let index = self.code_buffer.add_const(expr.clone().into());
+        let label = self.code_buffer.make_label();
+
+        // compile target
+        self.cmp(&expr.args[0].data, false, true);
+
+        self.code_buffer.add_instr_n(start, &[index, DEFLABEL]);
+        self.code_buffer.set_label(label);
+
+        // TODO check with Filip since in the original code is some weird R
+        self.cmp_indicies(&expr.args[1..]);
+
+        if rank {
+            self.code_buffer
+                .add_instr_n(end, &[index, (expr.args.len() - 1) as i32])
+        } else {
+            self.code_buffer.add_instr2(end, index)
+        }
+
+        self.code_buffer.put_label(label);
+
+        let _ = std::mem::replace(&mut self.context, orig);
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+
+        true
+    }
+
+    fn cmp_indicies(&mut self, indicies: &[data::TaggedSexp]) {
+        for idx in indicies {
+            self.cmp(&idx.data, true, true);
+        }
+    }
+
+    fn dots_or_missing(&self, args: &data::List) -> bool {
+        for arg in args {
+            match &arg.data.kind {
+                SexpKind::MissingArg => return true,
+                SexpKind::Sym(sym) if sym.data.as_str() == "..." => return true,
+                _ => (),
+            }
+        }
+        false
     }
 
     fn try_inline(&mut self, expr: &lang::Lang) -> bool {
@@ -475,7 +535,17 @@ impl Compiler {
                 true
             }
             "[[" => {
-                todo!()
+                if self.dots_or_missing(&expr.args) {
+                    self.cmp_dispatch(BcOp::STARTSUBSET2_OP, BcOp::DFLTSUBSET2_OP, expr, true)
+                } else {
+                    let nidx = expr.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBSET2_OP, false),
+                        2 => (BcOp::MATSUBSET2_OP, false),
+                        _ => (BcOp::SUBSET2_N_OP, true),
+                    };
+                    self.cmp_subset_dispatch(BcOp::STARTSUBSET2_N_OP, code, rank, expr)
+                }
             }
             "while" => {
                 let cond = &expr.args[0].data;
@@ -571,17 +641,14 @@ impl Compiler {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" => true,
-            "[[" => {
-                todo!()
-            }
+            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" | "[[" => true,
             _ if self.builtins.contains(sym) => true,
             _ => false,
         }
     }
 
     fn cmp_builtin_args(&mut self, args: &data::List) {
-        let tmp = CompilerContext::new_promise(&self.context);
+        let tmp = CompilerContext::new_arg(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
         for arg in args {
