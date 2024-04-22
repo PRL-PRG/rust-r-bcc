@@ -1,12 +1,14 @@
 #!/usr/bin/Rscript
 
+cargs = commandArgs(trailingOnly=TRUE);
+
 basevars <- ls("package:base", all.names = TRUE)
 types <- sapply(basevars, \(x) typeof(get(x)))
 
 #print(types)
 
-#saveRDS(basevars[types == "special"], "specials.RDS", version = 2, compress=FALSE)
-#saveRDS(basevars[types == "builtin"], "builtins.RDS", version = 2, compress=FALSE)
+saveRDS(basevars[types == "special"], paste(cargs[[1]], "specials", sep="."), version = 2, compress=FALSE)
+saveRDS(basevars[types == "builtin"], paste(cargs[[1]], "builtins", sep="."), version = 2, compress=FALSE)
 
 builtin_internals <- builtins(internal = TRUE)
 
@@ -17,7 +19,6 @@ base_env <- as.environment(base_env)
 
 #saveRDS(basevars, "basevars.RDS", version = 2, compress=FALSE)
 
-cargs = commandArgs(trailingOnly=TRUE);
 saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
 #saveRDS(builtins(internal = TRUE), "builtins-internal.RDS", version = 2, compress=FALSE)

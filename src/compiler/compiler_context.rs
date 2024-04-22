@@ -1,4 +1,4 @@
-use crate::sexp::sexp::Sexp;
+use crate::sexp::sexp::{data, Sexp};
 
 use super::code_buf::LabelIdx;
 
@@ -56,6 +56,11 @@ impl CompilerContext {
             },
             ..ctxt.clone()
         }
+    }
+
+    pub fn new_function(ctxt : &CompilerContext, formals : &data::List, body : &Sexp) -> Self {
+        let tmp = CompilerContext::new_top(ctxt);
+        tmp
     }
 
     pub fn new_loop(ctxt: &CompilerContext, loop_label: LabelIdx, end_label: LabelIdx) -> Self {

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::sexp::{
     bc::{Bc, BcOp},
     sexp::{data, lang, MetaData, Sexp, SexpKind},
@@ -28,13 +26,9 @@ pub struct Compiler {
 
     pub warnings: Vec<Warning>,
 
-    env: lang::Environment,
     localenv: HashSet<String>,
     baseenv: Option<lang::NormalEnv>,
     namespacebase: Option<lang::NormalEnv>,
-
-    specials: HashSet<String>,
-    builtins: HashSet<String>,
 }
 
 const LANG_FUNCS: [&str; 46] = [
@@ -51,15 +45,10 @@ impl Compiler {
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            env: lang::Environment::Global,
-            localenv: HashSet::new(),
+            localenv: lang::Environment::Global,
+            warnings: vec![],
             baseenv: None,
             namespacebase: None,
-
-            warnings: vec![],
-
-            specials: HashSet::new(),
-            builtins: HashSet::new(),
         }
     }
 
@@ -69,15 +58,10 @@ impl Compiler {
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            env: lang::Environment::Global,
-            localenv: HashSet::new(),
+            localenv: lang::Environment::Global,
+            warnings: vec![],
             baseenv: None,
             namespacebase: None,
-
-            warnings: vec![],
-
-            specials: HashSet::new(),
-            builtins: HashSet::new(),
         }
     }
 
@@ -91,7 +75,7 @@ impl Compiler {
 
     pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
         let mut closure = closure;
-        self.env = lang::NormalEnv::new(
+        self.localenv = lang::NormalEnv::new(
             Box::new(closure.environment),
             false,
             lang::ListFrame::new(
@@ -109,12 +93,10 @@ impl Compiler {
             lang::HashFrame::new(vec![]),
         )
         .into();
-        self.find_locals(&closure.body);
-        println!("locals : {:?}", self.localenv);
         let body =
             SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
         closure.body = Box::new(body);
-        let lang::Environment::Normal(env) = &mut self.env else {
+        let lang::Environment::Normal(env) = &mut self.localenv else {
             unreachable!()
         };
         closure.environment = std::mem::replace(env.parent.as_mut(), lang::Environment::Global);
@@ -203,7 +185,7 @@ impl Compiler {
         let tmp = CompilerContext::new_call(&self.context, call.clone().into());
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
-        if inline_ok && self.try_inline(call) {
+        if self.try_inline(call) {
             return;
         }
 
@@ -294,7 +276,7 @@ impl Compiler {
     }
 
     fn var_exist(&self, name: &str) -> bool {
-        self.env.find_local_var(name).is_some()
+        self.localenv.find_local_var(name).is_some()
     }
 
     fn create_expression_loc(&mut self) -> Sexp {
@@ -519,32 +501,7 @@ impl Compiler {
                     false
                 }
             },
-            "function" => {
-                println!("{expr}");
-                let forms = &expr.args[0].data;
-                let body = &expr.args[1].data;
-
-                let SexpKind::List(forms) = &forms.kind else {
-                    return false;
-                };
-
-                let tmp = CompilerContext::new_function(&self.context, forms, body);
-                let orig = std::mem::replace(&mut self.context, tmp);
-
-                let comp_body = self.gen_code(body, None);
-
-                let index = self.code_buffer.add_const(comp_body.into());
-                self.code_buffer.add_instr2(BcOp::MAKECLOSURE_OP, index);
-
-                let _ = std::mem::replace(&mut self.context, orig);
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-
-                true
-            }
-            _ if info.base_var && self.builtins.contains(sym) => {
+            _ if info.base_var => {
                 let index = self.code_buffer.add_const(expr.target.clone().into());
                 self.code_buffer.add_instr2(BcOp::GETBUILTIN_OP, index);
                 self.cmp_builtin_args(&expr.args);
@@ -559,17 +516,6 @@ impl Compiler {
 
                 true
             }
-            _ => false,
-        }
-    }
-
-    fn has_handler(&self, sym: &str) -> bool {
-        match sym {
-            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" => true,
-            "[[" => {
-                todo!()
-            }
-            _ if self.builtins.contains(sym) => true,
             _ => false,
         }
     }
@@ -706,17 +652,15 @@ impl Compiler {
     }
 
     fn is_base_var(&self, name: &str) -> bool {
-        let local = self.env.find_local_var(name).is_some() || self.localenv.contains(name);
-        (self.find_baseenv(name).is_some() || self.find_namespacebase(name).is_some()) && !local
+        self.find_baseenv(name).is_some() || self.find_namespacebase(name).is_some()
     }
 
     fn get_inlineinfo(&self, function: &str) -> Option<InlineInfo> {
-        let base_var = self.is_base_var(function);
-        if self.options.inline_level > 0 && base_var && self.has_handler(function) {
+        if self.options.inline_level > 0 && self.is_base_var(function) {
             let info = InlineInfo {
                 guard: !(self.options.inline_level >= 3
                     || (self.options.inline_level >= 2 && LANG_FUNCS.contains(&function))),
-                base_var,
+                base_var: self.is_base_var(function),
             };
             Some(info)
         } else {
@@ -724,45 +668,8 @@ impl Compiler {
         }
     }
 
-    fn get_assigned_var(&mut self, sexp: &Sexp) -> Option<String> {
-        match &sexp.kind {
-            SexpKind::Sym(sym) => Some(sym.data.clone()),
-            SexpKind::Lang(_) => todo!(),
-            SexpKind::MissingArg => todo!(),
-            _ => None,
-        }
-    }
-
-    fn find_locals(&mut self, sexp: &Sexp) {
-        let SexpKind::Lang(sexp) = &sexp.kind else {
-            return;
-        };
-
-        let lang::Target::Sym(target) = &sexp.target else {
-            return;
-        };
-
-        match target.data.as_str() {
-            "=" | "<-" => {
-                let var = self.get_assigned_var(&sexp.args[0].data);
-                if let Some(var) = var {
-                    self.localenv.insert(var);
-                }
-            }
-            "for" => todo!(),
-            "delayedAssign" => todo!(),
-            "assign" => todo!(),
-            "function" => (),
-            "~" => todo!(),
-            "local" => todo!(),
-            "expression" => todo!(),
-            "quote" => todo!(),
-            _ => (),
-        }
-
-        for arg in &sexp.args {
-            self.find_locals(&arg.data);
-        }
+    fn find_locals(&mut self, sexp : &Sexp) {
+        
     }
 }
 
@@ -914,26 +821,6 @@ mod tests {
                         data: baseenv,
                     } = file.read_rds().unwrap();
 
-                    let mut file = std::fs::File::open(format!("{path_env}.specials")).unwrap();
-                    let RDSResult {
-                        header: _,
-                        data: specials,
-                    } = file.read_rds().unwrap();
-
-                    let mut file = std::fs::File::open(format!("{path_env}.builtins")).unwrap();
-                    let RDSResult {
-                        header: _,
-                        data: builtins,
-                    } = file.read_rds().unwrap();
-
-                    let SexpKind::Str(specials) = specials.kind else {
-                        unreachable!()
-                    };
-
-                    let SexpKind::Str(builtins) = builtins.kind else {
-                        unreachable!()
-                    };
-
                     println!("{}", input);
 
                     let mut compiler = Compiler::new();
@@ -944,9 +831,6 @@ mod tests {
                     else {
                         unreachable!()
                     };
-
-                    compiler.specials = HashSet::from_iter(specials.into_iter());
-                    compiler.builtins = HashSet::from_iter(builtins.into_iter());
 
                     compiler.set_baseenv(baseenv);
                     let bc = compiler.cmpfun(cl);
@@ -962,7 +846,7 @@ mod tests {
                     writer.write_rds(header, input).unwrap();
                     writer.flush().unwrap();
 
-                    assert_eq!(writer.get_ref(), &input_vec, "Binary are not the same");
+                    assert_eq!(writer.get_ref(), &input_vec);
                     std::fs::remove_file(path).unwrap();
                     std::fs::remove_file(path_comp).unwrap();
                 }
@@ -1110,6 +994,4 @@ mod tests {
             list(x);
         }"
     ];
-
-    test_fun_default![tmp, "function() print(1)"];
 }
