@@ -12,27 +12,38 @@ createEnv <- function(env) {
 }
 
 cmpfuncon <- function(f, con, options=NULL) {
-    e <- createEnv(environment(f));
+    #e <- createEnv(environment(f));
     #e <- new.env();
-    data <- list(f, e);
-    serialize(e, con);
-    write('\n', con);
+    #data <- list(f, e);
+    serialize(f, con, ascii=FALSE, version=2);
     print("sent");
     flush(con);
     unserialize(con)
 }
 
 cmpfun <- function(f, options=NULL) {
-    con <- socketConnection(port=1337, blocking=FALSE, open="a+");
+    con <- socketConnection(port=1337, blocking=TRUE);
     res <- cmpfuncon(f, con, options);
     close(con);
     res
 }
 
 f <- function(x) {
-    x + 1
+    x + 2
+}
+
+fib <- function(n) {
+    a <- 0;
+    b <- 1;
+    while (n >=0) {
+        tmp <- b;
+        b <- a + b;
+        a <- tmp;
+        n <- b - 1;
+    }
+    a
 }
 
 f(2);
-fc <- cmpfun(f)
+fc <- cmpfun(fib)
 fc

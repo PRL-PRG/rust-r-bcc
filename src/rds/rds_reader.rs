@@ -219,6 +219,7 @@ pub trait RDSReader: Read {
             }
             sexptype::PROMSXP => self.read_promsxp(flag, refs)?,
             sexptype::CPLXSXP => self.read_cplsxp()?,
+            //sexptype::EXTPTRSXP => self.chain
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
                 println!("{x}");
@@ -450,15 +451,16 @@ pub trait RDSReader: Read {
     }
 
     fn read_langsxp(&mut self, refs: &mut RefsTable, flag: Flag) -> Result<Sexp, RDSReaderError> {
-        let target = self.read_item(refs)?;
-
-        if flag.has_attributes {
-            todo!()
-        }
+        let attr = if flag.has_attributes {
+            Some(self.read_item(refs)?)
+        } else {
+            None
+        };
 
         if flag.has_tag {
             todo!()
         }
+        let target = self.read_item(refs)?;
 
         let args = self.read_item(refs)?;
 
@@ -477,18 +479,22 @@ pub trait RDSReader: Read {
             SexpKind::Lang(lang) => lang::Target::Lang(Box::new(lang)),
             _ => {
                 return Err(RDSReaderError::DataError(
-                    "Target needs to be either symbol or lang".to_string(),
+                    format!("Target needs to be either symbol or lang got {target}"),
                 ))
             }
         };
-
-        Ok(SexpKind::Lang(lang::Lang::new(target, args)).into())
+        let mut res: Sexp = SexpKind::Lang(lang::Lang::new(target, args)).into();
+        if let Some(attr) = attr {
+            res.set_attr(attr);
+        }
+        Ok(res)
     }
 
     fn read_closxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
         // order of the values : [attr], enviroment, formals, body
         let attr = if flags.has_attributes {
             Some(self.read_item(refs)?)
+            //None
         } else {
             None
         };

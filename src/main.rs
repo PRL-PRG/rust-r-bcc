@@ -5,11 +5,7 @@ use rds::{
     rds_writer::{RDSWriter, RDSWriterError},
 };
 
-use crate::{
-    compiler::compiler::Compiler,
-    rds::RDSResult,
-    sexp::sexp::Sexp,
-};
+use crate::{compiler::compiler::Compiler, rds::RDSResult, server::run, sexp::sexp::Sexp};
 
 mod compiler;
 mod rds;
@@ -48,6 +44,10 @@ impl RDSWriter for File {}
 
 fn main() -> Result<(), MainError> {
     let args: Vec<String> = env::args().collect();
+    if args.len() == 2 && args[1] == "-s" {
+        run();
+        return Ok(());
+    }
     if args.len() != 3 {
         return Err(MainError::WrongArgs);
     }

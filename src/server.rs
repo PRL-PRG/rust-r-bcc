@@ -3,6 +3,8 @@ use std::{
     net::{Shutdown, TcpListener, TcpStream},
 };
 
+use crate::{compiler::compiler::Compiler, rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult}, sexp::sexp::SexpKind};
+
 pub fn run() {
     let listener = TcpListener::bind("127.0.0.1:1337").unwrap();
 
@@ -14,25 +16,24 @@ pub fn run() {
     }
 }
 
+impl RDSReader for TcpStream {}
+impl RDSWriter for TcpStream {}
+
 fn handle_conn(stream: TcpStream) {
     println!("handle start");
     let mut stream = stream;
-    let buf_reader = BufReader::new(&mut stream);
-    let data: Vec<_> = buf_reader
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
+    let RDSResult {header, data} = stream.read_rds().unwrap();
+    println!("input");
+    println!("{data}\n");
 
-    stream.shutdown(Shutdown::Read).unwrap();
+    let mut compiler = Compiler::new_options(0);
+    let SexpKind::Closure(closure) = data.kind else {panic!()};
+    let res = compiler.cmpfun(closure);
 
-    let data = data
-        .into_iter()
-        .reduce(|acc, x| acc + "\n" + x.as_str())
-        .unwrap()
-        + "\n";
-    println!("{:?}", data);
-    stream.write(data.into_bytes().as_slice()).unwrap();
+    println!("output");
+    println!("{res}\n");
+
+    stream.write_rds(header, res.into()).unwrap();
     stream.flush().unwrap();
     stream.shutdown(Shutdown::Write).unwrap();
 }
