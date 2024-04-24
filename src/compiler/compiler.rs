@@ -791,6 +791,7 @@ impl Compiler {
     fn get_inlineinfo(&self, function: &str) -> Option<InlineInfo> {
         let base_var = self.is_base_var(function);
         if self.options.inline_level > 0 && base_var && self.has_handler(function) {
+            println!("yo what the fuck");
             let info = InlineInfo {
                 guard: !(self.options.inline_level >= 3
                     || (self.options.inline_level >= 2 && LANG_FUNCS.contains(&function))),
@@ -1113,6 +1114,7 @@ mod tests {
             list(x);
         }"
     ];
+    test_fun_noopt![higher_order, "(function(x) function(y) x + y)(1)"];
 
     test_fun_default![basic_opt, "function() NULL"];
     test_fun_default![basic_real_opt, "function() 1"];
@@ -1188,6 +1190,6 @@ mod tests {
             list(x);
         }"
     ];
-
     test_fun_default![tmp, "function() print(1)"];
+    test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
 }
