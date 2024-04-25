@@ -427,3 +427,6 @@ testR![
     }, options=list(optimize=0))"
 ];
 
+testR![
+    hashenv_02, "{e <- new.env(); e$a <- 1; e$b <- 2; e }"
+];

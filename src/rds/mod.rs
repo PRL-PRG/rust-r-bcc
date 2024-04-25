@@ -169,6 +169,7 @@ impl From<&Sexp> for Flag {
             SexpKind::Environment(lang::Environment::Base) => sexptype::BASEENV_SXP,
             SexpKind::Environment(lang::Environment::Empty) => sexptype::EMPTYENV_SXP,
             SexpKind::Environment(lang::Environment::Normal(_)) => sexptype::ENVSXP,
+            SexpKind::Environment(lang::Environment::Namespace(_)) => sexptype::NAMESPACESXP,
             SexpKind::Promise {
                 environment: _,
                 expr: _,

@@ -113,6 +113,9 @@ impl Display for lang::Environment {
             lang::Environment::Empty => write!(f, "empty env"),
             lang::Environment::Base => write!(f, "base env"),
             lang::Environment::Normal(env) => write!(f, "{env}"),
+            lang::Environment::Namespace(names) => {
+                write!(f, "namespace ({})", join_string(names, ", "))
+            }
         }
     }
 }

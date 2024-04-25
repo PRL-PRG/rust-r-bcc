@@ -580,6 +580,13 @@ pub trait RDSWriter: Write {
             lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,
             lang::Environment::Base => self.write_int(super::sexptype::BASEENV_SXP as i32)?,
             lang::Environment::Empty => self.write_int(super::sexptype::EMPTYENV_SXP as i32)?,
+            lang::Environment::Namespace(names) => {
+                self.write_int(super::sexptype::NAMESPACESXP as i32)?;
+                self.write_int(names.len() as i32)?;
+                for name in names {
+                    self.write_item(name, refs)?
+                }
+            }
             lang::Environment::Normal(env) => {
                 self.write_item(&lang::Environment::Normal(env.clone()).into(), refs)?;
             }

@@ -56,7 +56,7 @@ fn main() -> Result<(), MainError> {
 
     let compile = args[2] == "-c";
 
-    println!("{sexp}");
+    println!("start {sexp}");
 
     match sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) if compile => {
@@ -70,8 +70,8 @@ fn main() -> Result<(), MainError> {
             outfile.write_rds(header, bc.into())?;
         }
         _ => {
-            let mut outfile = File::create("temp/outfile.dat")?;
-            outfile.write_rds(header, sexp)?;
+            //let mut outfile = File::create("temp/outfile.dat")?;
+            //outfile.write_rds(header, sexp)?;
         }
     };
 

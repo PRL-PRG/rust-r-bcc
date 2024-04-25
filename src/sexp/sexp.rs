@@ -236,12 +236,16 @@ pub mod lang {
         Base,
         Empty,
         Normal(NormalEnv),
+        Namespace(Vec<super::Sexp>),
     }
 
     impl Environment {
         pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
             match self {
-                Environment::Global | Environment::Base | Environment::Empty => None,
+                Environment::Global
+                | Environment::Base
+                | Environment::Empty
+                | Environment::Namespace(_) => None,
                 Environment::Normal(env) => env.find_local_var(name),
             }
         }
@@ -314,7 +318,8 @@ pub mod lang {
             let mut env = HashMap::default();
             for (index, item) in data.iter().enumerate() {
                 let Some(name) = item.tag.clone() else {
-                    unreachable!()
+                    println!("{item}");
+                    continue;
                 };
                 env.insert(name, index);
             }

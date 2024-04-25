@@ -33,8 +33,8 @@ pub struct Compiler {
     baseenv: Option<lang::NormalEnv>,
     namespacebase: Option<lang::NormalEnv>,
 
-    specials: HashSet<String>,
-    builtins: HashSet<String>,
+    pub specials: HashSet<String>,
+    pub builtins: HashSet<String>,
 }
 
 const LANG_FUNCS: [&str; 46] = [
@@ -791,7 +791,6 @@ impl Compiler {
     fn get_inlineinfo(&self, function: &str) -> Option<InlineInfo> {
         let base_var = self.is_base_var(function);
         if self.options.inline_level > 0 && base_var && self.has_handler(function) {
-            println!("yo what the fuck");
             let info = InlineInfo {
                 guard: !(self.options.inline_level >= 3
                     || (self.options.inline_level >= 2 && LANG_FUNCS.contains(&function))),
@@ -846,12 +845,18 @@ impl Compiler {
 }
 
 pub struct CompilerOptions {
-    inline_level: usize,
+    pub inline_level: usize,
 }
 
 impl Default for CompilerOptions {
     fn default() -> Self {
         Self { inline_level: 2 }
+    }
+}
+
+impl CompilerOptions {
+    pub fn new(inline_level: usize) -> Self {
+        Self { inline_level }
     }
 }
 

@@ -39,10 +39,11 @@ impl TryInto<lang::HashFrame> for Sexp {
     fn try_into(self) -> Result<lang::HashFrame, Self::Error> {
         match self.kind {
             SexpKind::Vec(vec) => Ok(lang::HashFrame::new(vec)),
+            //SexpKind::List(list) => Ok(lang::HashFrame::new(vec![SexpKind::List(list).into()])),
             SexpKind::Nil => Ok(lang::HashFrame::default()),
-            _ => Err(RDSReaderError::DataError(
-                "Hash frame must be vector".into(),
-            )),
+            data => Err(RDSReaderError::DataError(format!(
+                "Hash frame must be vector got {data}"
+            ))),
         }
     }
 }
@@ -54,9 +55,7 @@ impl TryInto<lang::ListFrame> for Sexp {
         match self.kind {
             SexpKind::List(list) => Ok(lang::ListFrame::new(list)),
             SexpKind::Nil => Ok(lang::ListFrame::default()),
-            _ => Err(RDSReaderError::DataError(
-                "Hash frame must be vector".into(),
-            )),
+            _ => Err(RDSReaderError::DataError("List frame must be list".into())),
         }
     }
 }
@@ -65,13 +64,13 @@ pub trait RDSReader: Read {
     fn read_byte(&mut self) -> Result<u8, RDSReaderError> {
         let mut buf: [u8; 1] = [0];
         self.read(&mut buf)?;
+        //print!("#");
         Ok(buf[0])
     }
 
     fn read_int(&mut self) -> Result<i32, RDSReaderError> {
         let mut buf: [u8; 4] = [0; 4];
-        let len = self.read(&mut buf)?;
-        if len != 4 {
+        if self.read_exact(&mut buf).is_err() {
             return Err(RDSReaderError::DataError("Cannot read int".to_string()));
         }
         Ok(i32::from_be_bytes(buf))
@@ -85,8 +84,7 @@ pub trait RDSReader: Read {
 
     fn read_double(&mut self) -> Result<f64, RDSReaderError> {
         let mut buf: [u8; 8] = [0; 8];
-        let len = self.read(&mut buf)?;
-        if len != 8 {
+        if self.read_exact(&mut buf).is_err() {
             return Err(RDSReaderError::DataError("Cannot read double".to_string()));
         }
         Ok(f64::from_be_bytes(buf))
@@ -219,6 +217,18 @@ pub trait RDSReader: Read {
             }
             sexptype::PROMSXP => self.read_promsxp(flag, refs)?,
             sexptype::CPLXSXP => self.read_cplsxp()?,
+            sexptype::NAMESPACESXP => {
+                let _ = self.read_int()?;
+                let len = self.read_int()?;
+                let mut res = vec![];
+                for _ in 0..len {
+                    res.push(self.read_item(refs)?);
+                }
+                let res = lang::Environment::Namespace(res);
+                let res = res.into();
+                refs.add_ref(&res);
+                res
+            }
             //sexptype::EXTPTRSXP => self.chain
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
@@ -478,9 +488,9 @@ pub trait RDSReader: Read {
             SexpKind::Sym(sym) => lang::Target::Sym(sym),
             SexpKind::Lang(lang) => lang::Target::Lang(Box::new(lang)),
             _ => {
-                return Err(RDSReaderError::DataError(
-                    format!("Target needs to be either symbol or lang got {target}"),
-                ))
+                return Err(RDSReaderError::DataError(format!(
+                    "Target needs to be either symbol or lang got {target}"
+                )))
             }
         };
         let mut res: Sexp = SexpKind::Lang(lang::Lang::new(target, args)).into();
