@@ -64,7 +64,6 @@ pub trait RDSReader: Read {
     fn read_byte(&mut self) -> Result<u8, RDSReaderError> {
         let mut buf: [u8; 1] = [0];
         self.read(&mut buf)?;
-        //print!("#");
         Ok(buf[0])
     }
 
