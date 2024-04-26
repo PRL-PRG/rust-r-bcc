@@ -1197,4 +1197,36 @@ mod tests {
     ];
     test_fun_default![tmp, "function() print(1)"];
     test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
+
+    #[test]
+    fn base_env_bench() {
+        let path_env = "temp/benchenv.RDS";
+
+        // base environment
+        let mut command = std::process::Command::new("./baseenv.R")
+            .args([path_env])
+            .spawn()
+            .unwrap();
+        assert!(command.wait().unwrap().success());
+
+        let mut file = std::fs::File::open(path_env).unwrap();
+        let RDSResult {
+            header: _,
+            data: baseenv,
+        } = file.read_rds().unwrap();
+
+        let mut file = std::fs::File::open(format!("{path_env}.specials")).unwrap();
+        let RDSResult {
+            header: _,
+            data: specials,
+        } = file.read_rds().unwrap();
+
+        let mut file = std::fs::File::open(format!("{path_env}.builtins")).unwrap();
+        let RDSResult {
+            header: _,
+            data: builtins,
+        } = file.read_rds().unwrap();
+
+
+    }
 }
