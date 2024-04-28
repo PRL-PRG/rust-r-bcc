@@ -109,7 +109,9 @@ impl Compiler {
             lang::HashFrame::new(vec![]),
         )
         .into();
-        self.find_locals(&closure.body);
+        if self.options.inline_level > 0 {
+            self.find_locals(&closure.body);
+        }
         println!("locals : {:?}", self.localenv);
         let body =
             SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
@@ -176,8 +178,19 @@ impl Compiler {
 
     fn cmp_sym(&mut self, sym: &lang::Sym, missing_ok: bool) {
         match sym.data.as_str() {
-            ".." => todo!(),
-            name if name.starts_with("..") => todo!(),
+            ".." => self.code_buffer.add_instr(BcOp::DOTSERR_OP),
+            name if name.starts_with("..") => {
+                let index = self.code_buffer.add_const(sym.clone().into());
+                if missing_ok {
+                    self.code_buffer.add_instr2(BcOp::DDVAL_MISSOK_OP, index)
+                } else {
+                    self.code_buffer.add_instr2(BcOp::DDVAL_OP, index)
+                }
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+            }
             name => {
                 if !self.var_exist(name) {
                     self.warnings
@@ -247,7 +260,7 @@ impl Compiler {
 
         for arg in args {
             match &arg.data.kind {
-                SexpKind::MissingArg => todo!(),
+                SexpKind::MissingArg => self.code_buffer.add_instr(BcOp::DOMISSING_OP),
                 SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
                 SexpKind::Bc(_) => todo!(),
                 SexpKind::Promise {
@@ -805,7 +818,7 @@ impl Compiler {
     fn get_assigned_var(&mut self, sexp: &Sexp) -> Option<String> {
         match &sexp.kind {
             SexpKind::Sym(sym) => Some(sym.data.clone()),
-            SexpKind::Lang(_) => todo!(),
+            SexpKind::Lang(lang) => self.get_assigned_var(&lang.args[0].data),
             SexpKind::MissingArg => todo!(),
             _ => None,
         }
@@ -1203,7 +1216,7 @@ mod tests {
         let path_env = "temp/benchenv.RDS";
 
         // base environment
-        let mut command = std::process::Command::new("./baseenv.R")
+        let mut command = std::process::Command::new("./compile_base_package.R")
             .args([path_env])
             .spawn()
             .unwrap();
@@ -1227,6 +1240,37 @@ mod tests {
             data: builtins,
         } = file.read_rds().unwrap();
 
+        let mut file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
+        let RDSResult {
+            header: _,
+            data: orig,
+        } = file.read_rds().unwrap();
 
+        let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
+            unreachable!()
+        };
+
+        let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
+            println!("{orig}");
+            unreachable!()
+        };
+
+        assert!(orig.hash_frame.data.is_some());
+
+        let mut compiler = Compiler::new_options(0);
+
+        for (key, _) in &orig.hash_frame.env {
+            println!("{key}");
+            let closure = orig.hash_frame.get(&key).unwrap();
+            let closure = match &closure.kind {
+                SexpKind::Closure(closure) => closure,
+                SexpKind::Nil => continue,
+                _ => {
+                    println!("{closure}");
+                    panic!()
+                }
+            };
+            compiler.cmpfun(closure.clone());
+        }
     }
 }

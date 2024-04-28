@@ -511,17 +511,23 @@ pub trait RDSReader: Read {
         let formals = self.read_item(refs)?;
         let body = self.read_item(refs)?;
 
-        let mut res: Sexp = match (environment.kind, formals.kind) {
-            (SexpKind::Environment(environment), SexpKind::List(formals)) => {
+        let environment = match environment.kind {
+            SexpKind::Environment(environment) => environment,
+            SexpKind::Nil => lang::Environment::Empty.into(),
+            _ => unreachable!()
+        };
+
+        let mut res: Sexp = match formals.kind {
+            SexpKind::List(formals) => {
                 let formals: Result<Vec<_>, _> =
                     formals.into_iter().map(|x| x.try_into()).collect();
                 Ok(SexpKind::Closure(lang::Closure::new(formals?, body, environment)).into())
             }
-            (SexpKind::Environment(environment), SexpKind::Nil) => {
+            SexpKind::Nil => {
                 Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
             }
-            (env, formals) => Err(RDSReaderError::DataError(format!(
-                "Wrong format of the closure : {env}, {formals}"
+            formals => Err(RDSReaderError::DataError(format!(
+                "Wrong format of the closure : {environment}, {formals}"
             ))),
         }?;
 
