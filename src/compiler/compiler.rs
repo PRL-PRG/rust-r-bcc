@@ -355,6 +355,9 @@ impl Compiler {
     }
 
     fn cmp_prim2(&mut self, first: &Sexp, second: &Sexp, full: &lang::Lang, op: BcOp) {
+        if full.args.len() != 2 || self.dots_or_missing(&full.args) {
+            self.cmp_builtin(full, false);
+        }
         let taicall = self.context.tailcall;
         self.context.tailcall = false;
         self.cmp(first, false, true);
@@ -369,6 +372,23 @@ impl Compiler {
         self.code_buffer.add_instr2(op, index);
 
         std::mem::swap(&mut self.context, &mut orig);
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+    }
+
+    fn cmp_prim1(&mut self, arg: &Sexp, full: &lang::Lang, op: BcOp) {
+        if full.args.len() != 1 || self.dots_or_missing(&full.args) {
+            self.cmp_builtin(full, false);
+        }
+        let taicall = self.context.tailcall;
+        self.context.tailcall = false;
+        self.cmp(arg, false, true);
+        self.context.tailcall = taicall;
+
+        let index = self.code_buffer.add_const(full.clone().into());
+        self.code_buffer.add_instr2(op, index);
 
         if self.context.tailcall {
             self.code_buffer.add_instr(BcOp::RETURN_OP);
@@ -475,6 +495,26 @@ impl Compiler {
         }
 
         true
+    }
+
+    fn cmp_is(&mut self, op: BcOp, sexp: &lang::Lang) -> bool {
+        if self.any_dots(sexp) || sexp.args.len() != 1 {
+            self.cmp_builtin(sexp, false)
+        } else {
+            let tmp = CompilerContext::new_arg(&self.context);
+            let orig = std::mem::replace(&mut self.context, tmp);
+
+            self.cmp(&sexp.args[0].data, false, true);
+
+            let _ = std::mem::replace(&mut self.context, orig);
+
+            self.code_buffer.add_instr(op);
+
+            if self.context.tailcall {
+                self.code_buffer.add_instr(BcOp::RETURN_OP);
+            }
+            true
+        }
     }
 
     fn cmp_indicies(&mut self, indicies: &[data::TaggedSexp]) {
@@ -628,6 +668,14 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SUB_OP);
                 true
             }
+            "+" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UPLUS_OP);
+                true
+            }
+            "-" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UMINUS_OP);
+                true
+            }
             "*" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::MUL_OP);
                 true
@@ -720,8 +768,8 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::OR_OP);
                 true
             }
-            "!" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::NOT_OP);
+            "!" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::NOT_OP);
                 true
             }
             "break" => match &self.context.loop_ctx {
@@ -766,6 +814,15 @@ impl Compiler {
 
                 true
             }
+            "is.character" => self.cmp_is(BcOp::ISCHARACTER_OP, expr),
+            "is.complex" => self.cmp_is(BcOp::ISCOMPLEX_OP, expr),
+            "is.double" => self.cmp_is(BcOp::ISDOUBLE_OP, expr),
+            "is.integer" => self.cmp_is(BcOp::ISINTEGER_OP, expr),
+            "is.logical" => self.cmp_is(BcOp::ISLOGICAL_OP, expr),
+            "is.name" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
+            "is.null" => self.cmp_is(BcOp::ISNULL_OP, expr),
+            "is.object" => self.cmp_is(BcOp::ISOBJECT_OP, expr),
+            "is.symbol" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
             ".Internal" => match (&expr.args[0].data.kind, &self.baseenv) {
                 (SexpKind::Lang(lang), Some(baseenv)) => {
                     let name = if let lang::Target::Sym(sym) = &lang.target {
@@ -843,6 +900,10 @@ impl Compiler {
             "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "while"
             | "break" | "function" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">"
             | "&" | "|" | "!" => true,
+
+            "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
+            | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
+
             _ if MATH1_FUNCS.contains(&sym) => true,
             _ if self.builtins.contains(sym) => true,
             _ if self.specials.contains(sym) => true,
