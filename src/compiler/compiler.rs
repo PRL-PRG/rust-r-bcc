@@ -44,6 +44,12 @@ const LANG_FUNCS: [&str; 46] = [
     "return", "switch",
 ];
 
+const MATH1_FUNCS: [&str; 24] = [
+    "floor", "ceiling", "sign", "expm1", "log1p", "cos", "sin", "tan", "acos", "asin", "atan",
+    "cosh", "sinh", "tanh", "acosh", "asinh", "atanh", "lgamma", "gamma", "digamma", "trigamma",
+    "cospi", "sinpi", "tanpi",
+];
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -618,6 +624,30 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
                 true
             }
+            "-" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SUB_OP);
+                true
+            }
+            "*" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::MUL_OP);
+                true
+            }
+            "/" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::DIV_OP);
+                true
+            }
+            "^" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXPT_OP);
+                true
+            }
+            "exp" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXP_OP);
+                true
+            }
+            "sqrt" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SQRT_OP);
+                true
+            }
             "[[" => {
                 if self.dots_or_missing(&expr.args) {
                     self.cmp_dispatch(BcOp::STARTSUBSET2_OP, BcOp::DFLTSUBSET2_OP, expr, true)
@@ -658,8 +688,40 @@ impl Compiler {
 
                 true
             }
+            "==" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EQ_OP);
+                true
+            }
+            "!=" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::NE_OP);
+                true
+            }
+            "<" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::LT_OP);
+                true
+            }
+            "<=" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::LE_OP);
+                true
+            }
+            ">=" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::GE_OP);
+                true
+            }
             ">" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::GT_OP);
+                true
+            }
+            "&" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::AND_OP);
+                true
+            }
+            "|" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::OR_OP);
+                true
+            }
+            "!" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::NOT_OP);
                 true
             }
             "break" => match &self.context.loop_ctx {
@@ -723,7 +785,34 @@ impl Compiler {
                 }
                 _ => self.cmp_special(expr),
             },
+            _ if info.base_var && MATH1_FUNCS.contains(&sym) => {
+                if self.dots_or_missing(&expr.args) {
+                    return self.cmp_builtin(expr, false);
+                } else if expr.args.len() != 1 {
+                    return self.cmp_builtin(expr, false);
+                }
+
+                let math_index = MATH1_FUNCS.iter().position(|x| x == &sym).unwrap() as i32;
+                let tmp = CompilerContext::new_arg(&self.context);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                self.cmp(&expr.args[0].data, false, true);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                let index = self.code_buffer.add_const(expr.clone().into());
+
+                self.code_buffer
+                    .add_instr_n(BcOp::MATH1_OP, &[index, math_index]);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
+            }
             _ if info.base_var && self.builtins.contains(sym) => self.cmp_builtin(expr, false),
+            _ if info.base_var && self.specials.contains(sym) => self.cmp_special(expr),
             _ => false,
         }
     }
@@ -751,10 +840,12 @@ impl Compiler {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" | "[[" | ".Internal" => {
-                true
-            }
+            "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "while"
+            | "break" | "function" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">"
+            | "&" | "|" | "!" => true,
+            _ if MATH1_FUNCS.contains(&sym) => true,
             _ if self.builtins.contains(sym) => true,
+            _ if self.specials.contains(sym) => true,
             _ => false,
         }
     }
@@ -1462,14 +1553,14 @@ mod tests {
             unreachable!()
         };
 
-        let mut compiler = Compiler::new();
-        compiler.set_baseenv(env);
-        compiler.builtins = HashSet::from_iter(builtins.into_iter());
-        compiler.specials = HashSet::from_iter(specials.into_iter());
         let mut count = 0;
         let mut correct = 0;
         let all = orig.hash_frame.env.len();
         for (key, _) in &orig.hash_frame.env {
+            let mut compiler = Compiler::new();
+            compiler.set_baseenv(env.clone());
+            compiler.builtins = HashSet::from_iter(builtins.clone().into_iter());
+            compiler.specials = HashSet::from_iter(specials.clone().into_iter());
             count += 1;
             let closure = orig.hash_frame.get(&key).unwrap();
             let closure = match &closure.kind {
@@ -1498,14 +1589,14 @@ mod tests {
             } else {
                 print!("{count} / {all} : {key}");
                 println!(" fail");
-                if key == "factorial" {
+                if key == "substr" {
                     println!("My:\n{res}\n\n");
                     println!("Correct:\n{corr_closure}");
                 }
             }
         }
 
-        println!("{correct} / {all}");
+        println!("{correct} / {all} ({count})");
         assert!(false);
     }
 }
