@@ -166,7 +166,7 @@ pub trait RDSWriter: Write {
                 self.write_len(logics.len())?;
 
                 for val in logics {
-                    self.write_int(if !val { 0 } else { 1 })?;
+                    self.write_int(val.into())?;
                 }
                 Ok(())
             }

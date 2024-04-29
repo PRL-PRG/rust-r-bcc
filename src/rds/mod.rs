@@ -17,6 +17,7 @@ pub struct Flag {
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct RDSHeader {
     rds_type: u8,
     format_version: i32,

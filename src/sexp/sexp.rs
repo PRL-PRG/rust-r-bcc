@@ -95,6 +95,37 @@ pub mod data {
     }
 
     pub type List = Vec<TaggedSexp>;
+
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub enum Logic {
+        True,
+        False,
+        NA,
+    }
+
+    impl Into<i32> for &Logic {
+        fn into(self) -> i32 {
+            match self {
+                Logic::True => 1,
+                Logic::False => 0,
+                Logic::NA => i32::MIN,
+            }
+        }
+    }
+
+    impl From<i32> for Logic {
+        fn from(value: i32) -> Self {
+            match value {
+                0 => Logic::False,
+                1 => Logic::True,
+                i32::MIN => Logic::NA,
+                val => {
+                    println!("{val}");
+                    unreachable!()
+                }           
+            }
+        }
+    }
 }
 
 pub mod lang {
@@ -418,7 +449,7 @@ pub enum SexpKind {
     // vecs
     Char(Vec<char>),
     NAString,
-    Logic(Vec<bool>),
+    Logic(Vec<data::Logic>),
     Real(Vec<f64>),
     Int(Vec<i32>),
     Complex(Vec<data::Complex>),

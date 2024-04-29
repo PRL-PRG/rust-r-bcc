@@ -22,7 +22,6 @@ base_env <- as.environment(base_env)
 
 saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
-compiled <- sapply(basevars[types == "closure"], \(x) compiler::cmpfun(get(x)))
 orig <- sapply(basevars[types == "closure"], \(x) {
     tryCatch(eval(parse(text=deparse(get(x)))[[1]]), error = function(e) {
         #print("########################################################")
@@ -31,12 +30,29 @@ orig <- sapply(basevars[types == "closure"], \(x) {
         NULL
     })
 })
-#print(orig)
+compiled_no_opt <- sapply(basevars[types == "closure"], \(x) {
+    tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]]), options=list(optimize=0)), error = function(e) {
+        #print("########################################################")
+        #print("########################################################")
+        #print(get(x))
+        NULL
+    })
+})
+compiled <- sapply(basevars[types == "closure"], \(x) {
+    tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]])), error = function(e) {
+        #print("########################################################")
+        #print("########################################################")
+        #print(get(x))
+        NULL
+    })
+})
 
 compiled_env <- as.environment(compiled)
+compiled_env_no_opt <- as.environment(compiled_no_opt)
 orig <- as.environment(orig)
 
 saveRDS(compiled_env, paste(cargs[[1]], "cmp", sep="."), version = 2, compress=FALSE)
+saveRDS(compiled_env_no_opt, paste(cargs[[1]], "cmp_no_opt", sep="."), version = 2, compress=FALSE)
 saveRDS(orig, paste(cargs[[1]], "orig", sep="."), version = 2, compress=FALSE)
 
 

@@ -325,7 +325,7 @@ pub trait RDSReader: Read {
         data.reserve(len);
 
         for _ in 0..len {
-            data.push(self.read_int()? != 0)
+            data.push(self.read_int()?.into())
         }
 
         Ok(SexpKind::Logic(data).into())

@@ -155,3 +155,13 @@ impl Display for lang::Closure {
         write!(f, "(env : {})", self.environment)
     }
 }
+
+impl Display for data::Logic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            data::Logic::True => write!(f, "true"),
+            data::Logic::False => write!(f, "false"),
+            data::Logic::NA => write!(f, "NA"),
+        }
+    }
+}

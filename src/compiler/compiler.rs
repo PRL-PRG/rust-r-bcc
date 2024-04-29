@@ -112,7 +112,6 @@ impl Compiler {
         if self.options.inline_level > 0 {
             self.find_locals(&closure.body);
         }
-        println!("locals : {:?}", self.localenv);
         let body =
             SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
         closure.body = Box::new(body);
@@ -165,8 +164,7 @@ impl Compiler {
             }
             SexpKind::Lang(lang) => self.cmp_call(lang, true),
             _ => {
-                let ci = self.code_buffer.add_const(sexp.clone());
-                self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
+                self.cmp_const(&sexp);
 
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
@@ -174,6 +172,22 @@ impl Compiler {
             }
         };
         self.code_buffer.restore_current_expr(orig);
+    }
+
+    fn cmp_const(&mut self, sexp: &Sexp) {
+        match &sexp.kind {
+            SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
+            SexpKind::Logic(val) if val.len() == 1 && val[0] == data::Logic::False => {
+                self.code_buffer.add_instr(BcOp::LDFALSE_OP)
+            }
+            SexpKind::Logic(val) if val.len() == 1 && val[0] == data::Logic::True => {
+                self.code_buffer.add_instr(BcOp::LDTRUE_OP)
+            }
+            _ => {
+                let ci = self.code_buffer.add_const(sexp.clone());
+                self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
+            }
+        }
     }
 
     fn cmp_sym(&mut self, sym: &lang::Sym, missing_ok: bool) {
@@ -185,10 +199,6 @@ impl Compiler {
                     self.code_buffer.add_instr2(BcOp::DDVAL_MISSOK_OP, index)
                 } else {
                     self.code_buffer.add_instr2(BcOp::DDVAL_OP, index)
-                }
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
             }
             name => {
@@ -260,8 +270,13 @@ impl Compiler {
 
         for arg in args {
             match &arg.data.kind {
-                SexpKind::MissingArg => self.code_buffer.add_instr(BcOp::DOMISSING_OP),
-                SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
+                SexpKind::MissingArg => {
+                    self.code_buffer.add_instr(BcOp::DOMISSING_OP);
+                    self.cmp_tag(&arg.tag);
+                }
+                SexpKind::Sym(sym) if sym.data.as_str() == "..." => {
+                    self.code_buffer.add_instr(BcOp::DODOTS_OP);
+                }
                 SexpKind::Bc(_) => todo!(),
                 SexpKind::Promise {
                     environment: _,
@@ -273,16 +288,21 @@ impl Compiler {
                     let code = self.gen_code(&arg.data, curr.as_ref());
                     let index = self.code_buffer.add_const(code.into());
                     self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
+                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Nil => {
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
-                SexpKind::Logic(logs) if logs.len() == 1 && logs[0] => {
+                SexpKind::Logic(logs)
+                    if logs.len() == 1 && matches!(logs[0], data::Logic::True) =>
+                {
                     self.code_buffer.add_instr(BcOp::PUSHTRUEARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
-                SexpKind::Logic(logs) if logs.len() == 1 && !logs[0] => {
+                SexpKind::Logic(logs)
+                    if logs.len() == 1 && matches!(logs[0], data::Logic::False) =>
+                {
                     self.code_buffer.add_instr(BcOp::PUSHFALSEARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
@@ -349,6 +369,25 @@ impl Compiler {
         }
     }
 
+    fn any_dots(&self, sexp: &lang::Lang) -> bool {
+        for args in &sexp.args {
+            match &args.data.kind {
+                SexpKind::Sym(sym) if sym.data.as_str() == "..." => return true,
+                _ => (),
+            }
+        }
+        return false;
+    }
+
+    fn cmp_special(&mut self, sexp: &lang::Lang) -> bool {
+        let index = self.code_buffer.add_const(sexp.clone().into());
+        self.code_buffer.add_instr2(BcOp::CALLSPECIAL_OP, index);
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+        true
+    }
+
     // missing_ok default is true
     fn cmp_dispatch(
         &mut self,
@@ -357,7 +396,39 @@ impl Compiler {
         expr: &lang::Lang,
         missing_ok: bool,
     ) -> bool {
-        todo!()
+        if (missing_ok && self.any_dots(expr))
+            || (!missing_ok && self.dots_or_missing(&expr.args))
+            || expr.args.len() == 0
+        {
+            self.cmp_special(expr)
+        } else if matches!(expr.args[0].data.kind, SexpKind::MissingArg) {
+            self.cmp_special(expr)
+        } else {
+            let tmp = CompilerContext::new_arg(&self.context);
+            let orig = std::mem::replace(&mut self.context, tmp);
+
+            self.cmp(&expr.args[0].data, false, true);
+
+            let _ = std::mem::replace(&mut self.context, orig);
+
+            let index = self.code_buffer.add_const(expr.clone().into());
+            let end_label = self.code_buffer.make_label();
+            self.code_buffer.add_instr_n(start, &[index, DEFLABEL]);
+            self.code_buffer.set_label(end_label);
+
+            if expr.args.len() > 1 {
+                self.cmp_builtin_args(&expr.args[1..], missing_ok);
+            }
+
+            self.code_buffer.add_instr(end);
+            self.code_buffer.put_label(end_label);
+
+            if self.context.tailcall {
+                self.code_buffer.add_instr(BcOp::RETURN_OP);
+            }
+
+            true
+        }
     }
 
     fn cmp_subset_dispatch(
@@ -633,35 +704,63 @@ impl Compiler {
 
                 true
             }
-            _ if info.base_var && self.builtins.contains(sym) => {
-                let index = self.code_buffer.add_const(expr.target.clone().into());
-                self.code_buffer.add_instr2(BcOp::GETBUILTIN_OP, index);
-                self.cmp_builtin_args(&expr.args, false);
-
-                let index = self.code_buffer.add_const(expr.clone().into());
-
-                self.code_buffer.add_instr2(BcOp::CALLBUILTIN_OP, index);
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+            ".Internal" => match (&expr.args[0].data.kind, &self.baseenv) {
+                (SexpKind::Lang(lang), Some(baseenv)) => {
+                    let name = if let lang::Target::Sym(sym) = &lang.target {
+                        sym
+                    } else {
+                        return self.cmp_special(expr);
+                    };
+                    if let Some(x) = baseenv.find_local_var(name.data.as_str()) {
+                        if x.kind != SexpKind::Nil {
+                            self.cmp_builtin(lang, true)
+                        } else {
+                            return self.cmp_special(expr);
+                        }
+                    } else {
+                        return self.cmp_special(expr);
+                    }
                 }
-
-                true
-            }
+                _ => self.cmp_special(expr),
+            },
+            _ if info.base_var && self.builtins.contains(sym) => self.cmp_builtin(expr, false),
             _ => false,
         }
     }
 
+    fn cmp_builtin(&mut self, expr: &lang::Lang, internal: bool) -> bool {
+        let index = self.code_buffer.add_const(expr.target.clone().into());
+
+        if internal {
+            self.code_buffer.add_instr2(BcOp::GETINTLBUILTIN_OP, index);
+        } else {
+            self.code_buffer.add_instr2(BcOp::GETBUILTIN_OP, index);
+        }
+        self.cmp_builtin_args(&expr.args, false);
+
+        let index = self.code_buffer.add_const(expr.clone().into());
+
+        self.code_buffer.add_instr2(BcOp::CALLBUILTIN_OP, index);
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+
+        true
+    }
+
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" | "[[" => true,
+            "if" | "{" | "<-" | "+" | "while" | ">" | "break" | "function" | "[[" | ".Internal" => {
+                true
+            }
             _ if self.builtins.contains(sym) => true,
             _ => false,
         }
     }
 
     // missing_ok default false
-    fn cmp_builtin_args(&mut self, args: &data::List, missing_ok: bool) {
+    fn cmp_builtin_args(&mut self, args: &[data::TaggedSexp], missing_ok: bool) {
         let tmp = CompilerContext::new_arg(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
@@ -687,11 +786,15 @@ impl Compiler {
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
-                SexpKind::Logic(logs) if logs.len() == 1 && logs[0] => {
+                SexpKind::Logic(logs)
+                    if logs.len() == 1 && matches!(logs[0], data::Logic::True) =>
+                {
                     self.code_buffer.add_instr(BcOp::PUSHTRUEARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
-                SexpKind::Logic(logs) if logs.len() == 1 && !logs[0] => {
+                SexpKind::Logic(logs)
+                    if logs.len() == 1 && matches!(logs[0], data::Logic::False) =>
+                {
                     self.code_buffer.add_instr(BcOp::PUSHFALSEARG_OP);
                     self.cmp_tag(&arg.tag);
                 }
@@ -834,20 +937,22 @@ impl Compiler {
         };
 
         match target.data.as_str() {
-            "=" | "<-" => {
+            "=" | "<-" | "for" => {
                 let var = self.get_assigned_var(&sexp.args[0].data);
                 if let Some(var) = var {
                     self.localenv.insert(var);
                 }
             }
-            "for" => todo!(),
-            "delayedAssign" => todo!(),
-            "assign" => todo!(),
+            "delayedAssign" | "assign" => match &sexp.args[0].data.kind {
+                SexpKind::Str(name) if name.len() == 1 => {
+                    self.localenv.insert(name[0].clone());
+                }
+                _ => (),
+            },
             "function" => (),
             "~" => todo!(),
             "local" => todo!(),
-            "expression" => todo!(),
-            "quote" => todo!(),
+            "expression" | "quote" => (),
             _ => (),
         }
 
@@ -1212,6 +1317,88 @@ mod tests {
     test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
 
     #[test]
+    fn base_env_bench_no_opt() {
+        let path_env = "temp/benchenv_no_opt.RDS";
+
+        // base environment
+        let mut command = std::process::Command::new("./compile_base_package.R")
+            .args([path_env])
+            .spawn()
+            .unwrap();
+        assert!(command.wait().unwrap().success());
+
+        let mut file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
+        let RDSResult { header, data: orig } = file.read_rds().unwrap();
+
+        let mut file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
+        let RDSResult {
+            header: _,
+            data: cmp_no_opt,
+        } = file.read_rds().unwrap();
+
+        let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
+            println!("{orig}");
+            unreachable!()
+        };
+
+        let SexpKind::Environment(lang::Environment::Normal(cmp_no_opt)) = cmp_no_opt.kind else {
+            println!("{orig}");
+            unreachable!()
+        };
+
+        assert!(orig.hash_frame.data.is_some());
+
+        let mut compiler = Compiler::new_options(0);
+
+        let mut count = 0;
+        let mut correct = 0;
+        let all = orig.hash_frame.env.len();
+        for (key, _) in &orig.hash_frame.env {
+            count += 1;
+            let closure = orig.hash_frame.get(&key).unwrap();
+            let closure = match &closure.kind {
+                SexpKind::Closure(closure) => closure,
+                SexpKind::Nil => continue,
+                _ => {
+                    println!("{closure}");
+                    panic!()
+                }
+            };
+            let res = compiler.cmpfun(closure.clone());
+            let corr_closure = cmp_no_opt.hash_frame.get(&key).unwrap();
+            let corr_closure = match &corr_closure.kind {
+                SexpKind::Closure(closure) => closure,
+                SexpKind::Nil => continue,
+                _ => {
+                    println!("{corr_closure}");
+                    panic!()
+                }
+            };
+
+            /*println!("My:");
+            println!("{res}\n");
+
+            println!("Correct:\n{corr_closure}");*/
+
+            //assert!(&res == corr_closure);
+            if &res == corr_closure {
+                correct += 1;
+                //println!(" ok")
+            } else {
+                /*print!("{count} / {all} : {key}");
+                println!(" fail");
+                if key == "norm" {
+                    println!("My:\n{res}\n\n");
+                    println!("Correct:\n{corr_closure}");
+                }*/
+            }
+        }
+
+        println!("correct {}", correct);
+        assert!(false);
+    }
+
+    #[test]
     fn base_env_bench() {
         let path_env = "temp/benchenv.RDS";
 
@@ -1224,7 +1411,7 @@ mod tests {
 
         let mut file = std::fs::File::open(path_env).unwrap();
         let RDSResult {
-            header: _,
+            header,
             data: baseenv,
         } = file.read_rds().unwrap();
 
@@ -1246,6 +1433,12 @@ mod tests {
             data: orig,
         } = file.read_rds().unwrap();
 
+        let mut file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
+        let RDSResult {
+            header: _,
+            data: cmp,
+        } = file.read_rds().unwrap();
+
         let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
             unreachable!()
         };
@@ -1255,12 +1448,29 @@ mod tests {
             unreachable!()
         };
 
+        let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
+            println!("{cmp}");
+            unreachable!()
+        };
+
         assert!(orig.hash_frame.data.is_some());
+        let SexpKind::Str(specials) = specials.kind else {
+            unreachable!()
+        };
 
-        let mut compiler = Compiler::new_options(0);
+        let SexpKind::Str(builtins) = builtins.kind else {
+            unreachable!()
+        };
 
+        let mut compiler = Compiler::new();
+        compiler.set_baseenv(env);
+        compiler.builtins = HashSet::from_iter(builtins.into_iter());
+        compiler.specials = HashSet::from_iter(specials.into_iter());
+        let mut count = 0;
+        let mut correct = 0;
+        let all = orig.hash_frame.env.len();
         for (key, _) in &orig.hash_frame.env {
-            println!("{key}");
+            count += 1;
             let closure = orig.hash_frame.get(&key).unwrap();
             let closure = match &closure.kind {
                 SexpKind::Closure(closure) => closure,
@@ -1270,7 +1480,32 @@ mod tests {
                     panic!()
                 }
             };
-            compiler.cmpfun(closure.clone());
+            let res = compiler.cmpfun(closure.clone());
+            let corr_closure = cmp.hash_frame.get(&key).unwrap();
+            let corr_closure = match &corr_closure.kind {
+                SexpKind::Closure(closure) => closure,
+                SexpKind::Nil => continue,
+                _ => {
+                    println!("{closure}");
+                    panic!()
+                }
+            };
+
+            //assert_eq!(&res, corr_closure);
+            if &res == corr_closure {
+                correct += 1;
+                //println!(" ok")
+            } else {
+                print!("{count} / {all} : {key}");
+                println!(" fail");
+                if key == "factorial" {
+                    println!("My:\n{res}\n\n");
+                    println!("Correct:\n{corr_closure}");
+                }
+            }
         }
+
+        println!("{correct} / {all}");
+        assert!(false);
     }
 }

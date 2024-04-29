@@ -1,0 +1,130 @@
+My:
+function(x, type = c(['O'], ['I'], ['F'], ['M'], ['2']))
+instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 3
+	CALL_OP 5
+	RETURN_OP
+constant pool : [{(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), {, {(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 3
+	MAKEPROM_OP 5
+	MAKEPROM_OP 7
+	CALL_OP 9
+	RETURN_OP
+constant pool : [if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), if, if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), instruction :
+	GETFUN_OP 1
+	PUSHCONSTARG_OP 2
+	MAKEPROM_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [identical(['2'], type), identical, ['2'], instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [type, identical(['2'], type), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 3
+	CALL_OP 5
+	RETURN_OP
+constant pool : [{(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), {, {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 3
+	PUSHCONSTARG_OP 5
+	MAKEPROM_OP 7
+	CALL_OP 9
+	RETURN_OP
+constant pool : [if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), if, if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [!(length(x)), !, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [length(x), length, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [x, length(x), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), [0], if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 3
+	PUSHCONSTARG_OP 5
+	MAKEPROM_OP 7
+	CALL_OP 9
+	RETURN_OP
+constant pool : [if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), if, if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [anyNA(x), anyNA, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [x, anyNA(x), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), [NaN], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	PUSHCONSTARG_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [[($(svd(x, (nu) [0], (nv) [0]), d), [1]), [, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	MAKEPROM_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [$(svd(x, (nu) [0], (nv) [0]), d), $, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	PUSHCONSTARG_OP 3
+	SETTAG_OP 4
+	PUSHCONSTARG_OP 3
+	SETTAG_OP 5
+	CALL_OP 0
+	RETURN_OP
+constant pool : [svd(x, (nu) [0], (nv) [0]), svd, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [x, svd(x, (nu) [0], (nv) [0]), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, [0], nu, nv, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [d, $(svd(x, (nu) [0], (nv) [0]), d), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, [1], (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])), (data : [-2147483648, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 11], args : list: [(class) ['expressionsIndex']])]
+, if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1]))), (data : [-2147483648, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 11], args : list: [(class) ['expressionsIndex']])]
+, {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), (data : [-2147483648, 2, 2, 4, 4, 6, 6, 7], args : list: [(class) ['expressionsIndex']])]
+, if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	CALL_OP 0
+	RETURN_OP
+constant pool : [.Internal(La_dlange(x, type)), .Internal, instruction :
+	GETFUN_OP 1
+	MAKEPROM_OP 2
+	MAKEPROM_OP 3
+	CALL_OP 0
+	RETURN_OP
+constant pool : [La_dlange(x, type), La_dlange, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [x, La_dlange(x, type), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, instruction :
+	GETVAR_OP 0
+	RETURN_OP
+constant pool : [type, La_dlange(x, type), (data : [-2147483648, 1, 1, 1], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, (data : [-2147483648, 0, 0, 0, 0, 0, 0, 0], args : list: [(class) ['expressionsIndex']])]
+, if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type))), (data : [-2147483648, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 11], args : list: [(class) ['expressionsIndex']])]
+, {(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), {(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), {(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), {(if(identical(['2'], type), {(if(!(length(x)), [0], if(anyNA(x), [NaN], [($(svd(x, (nu) [0], (nv) [0]), d), [1])))), .Internal(La_dlange(x, type)))), (data : [-2147483648, 2, 2, 4, 4, 6, 6, 7], args : list: [(class) ['expressionsIndex']])]
+
+(env : parent : global env, frame : (x) { [[(X, i) (['norm'], empty env) })

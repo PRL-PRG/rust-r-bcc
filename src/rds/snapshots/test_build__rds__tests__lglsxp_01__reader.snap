@@ -5,8 +5,8 @@ expression: res
 Sexp {
     kind: Logic(
         [
-            false,
-            true,
+            False,
+            True,
         ],
     ),
     metadata: MetaData {
