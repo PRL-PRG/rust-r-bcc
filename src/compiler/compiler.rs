@@ -35,6 +35,7 @@ pub struct Compiler {
 
     pub specials: HashSet<String>,
     pub builtins: HashSet<String>,
+    pub internals: HashSet<String>,
 }
 
 const LANG_FUNCS: [&str; 46] = [
@@ -66,6 +67,7 @@ impl Compiler {
 
             specials: HashSet::new(),
             builtins: HashSet::new(),
+            internals: HashSet::new(),
         }
     }
 
@@ -84,6 +86,7 @@ impl Compiler {
 
             specials: HashSet::new(),
             builtins: HashSet::new(),
+            internals: HashSet::new(),
         }
     }
 
@@ -772,6 +775,50 @@ impl Compiler {
                 self.cmp_prim1(&expr.args[0].data, expr, BcOp::NOT_OP);
                 true
             }
+            "&&" => {
+                let tmp = CompilerContext::new_arg(&self.context);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                let index = self.code_buffer.add_const(expr.clone().into());
+
+                let label = self.code_buffer.make_label();
+                self.cmp(&expr.args[0].data, false, true);
+                self.code_buffer
+                    .add_instr_n(BcOp::AND1ST_OP, &[index, DEFLABEL]);
+                self.code_buffer.set_label(label);
+                self.cmp(&expr.args[1].data, false, true);
+                self.code_buffer.add_instr2(BcOp::AND2ND_OP, index);
+                self.code_buffer.put_label(label);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+                true
+            }
+            "||" => {
+                let tmp = CompilerContext::new_arg(&self.context);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                let index = self.code_buffer.add_const(expr.clone().into());
+
+                let label = self.code_buffer.make_label();
+                self.cmp(&expr.args[0].data, false, true);
+                self.code_buffer
+                    .add_instr_n(BcOp::OR1ST_OP, &[index, DEFLABEL]);
+                self.code_buffer.set_label(label);
+                self.cmp(&expr.args[1].data, false, true);
+                self.code_buffer.add_instr2(BcOp::OR2ND_OP, index);
+                self.code_buffer.put_label(label);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+                true
+            }
             "break" => match &self.context.loop_ctx {
                 Some(loop_ctx) => {
                     self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
@@ -823,19 +870,15 @@ impl Compiler {
             "is.null" => self.cmp_is(BcOp::ISNULL_OP, expr),
             "is.object" => self.cmp_is(BcOp::ISOBJECT_OP, expr),
             "is.symbol" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
-            ".Internal" => match (&expr.args[0].data.kind, &self.baseenv) {
-                (SexpKind::Lang(lang), Some(baseenv)) => {
+            ".Internal" => match &expr.args[0].data.kind {
+                SexpKind::Lang(lang) => {
                     let name = if let lang::Target::Sym(sym) = &lang.target {
                         sym
                     } else {
                         return self.cmp_special(expr);
                     };
-                    if let Some(x) = baseenv.find_local_var(name.data.as_str()) {
-                        if x.kind != SexpKind::Nil {
-                            self.cmp_builtin(lang, true)
-                        } else {
-                            return self.cmp_special(expr);
-                        }
+                    if self.internals.contains(&name.data) {
+                        self.cmp_builtin(lang, true)
                     } else {
                         return self.cmp_special(expr);
                     }
@@ -1579,6 +1622,12 @@ mod tests {
             data: builtins,
         } = file.read_rds().unwrap();
 
+        let mut file = std::fs::File::open(format!("{path_env}.internal")).unwrap();
+        let RDSResult {
+            header: _,
+            data: internals,
+        } = file.read_rds().unwrap();
+
         let mut file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
         let RDSResult {
             header: _,
@@ -1614,6 +1663,10 @@ mod tests {
             unreachable!()
         };
 
+        let SexpKind::Str(internals) = internals.kind else {
+            unreachable!()
+        };
+
         let mut count = 0;
         let mut correct = 0;
         let all = orig.hash_frame.env.len();
@@ -1622,6 +1675,7 @@ mod tests {
             compiler.set_baseenv(env.clone());
             compiler.builtins = HashSet::from_iter(builtins.clone().into_iter());
             compiler.specials = HashSet::from_iter(specials.clone().into_iter());
+            compiler.internals = HashSet::from_iter(internals.clone().into_iter());
             count += 1;
             let closure = orig.hash_frame.get(&key).unwrap();
             let closure = match &closure.kind {
@@ -1650,7 +1704,7 @@ mod tests {
             } else {
                 print!("{count} / {all} : {key}");
                 println!(" fail");
-                if key == "substr" {
+                if key == "is.factor" {
                     println!("My:\n{res}\n\n");
                     println!("Correct:\n{corr_closure}");
                 }

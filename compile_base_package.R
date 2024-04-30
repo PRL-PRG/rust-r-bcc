@@ -54,5 +54,5 @@ orig <- as.environment(orig)
 saveRDS(compiled_env, paste(cargs[[1]], "cmp", sep="."), version = 2, compress=FALSE)
 saveRDS(compiled_env_no_opt, paste(cargs[[1]], "cmp_no_opt", sep="."), version = 2, compress=FALSE)
 saveRDS(orig, paste(cargs[[1]], "orig", sep="."), version = 2, compress=FALSE)
-
+saveRDS(builtins(internal = TRUE), paste(cargs[[1]], "internal", sep="."), version = 2, compress=FALSE)
 

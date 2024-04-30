@@ -21,5 +21,6 @@ base_env <- as.environment(base_env)
 
 saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
-#saveRDS(builtins(internal = TRUE), "builtins-internal.RDS", version = 2, compress=FALSE)
+saveRDS(builtins(internal = TRUE), paste(cargs[[1]], "internal", sep="."), version = 2, compress=FALSE)
+
 
