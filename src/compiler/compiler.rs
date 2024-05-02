@@ -942,7 +942,7 @@ impl Compiler {
         match sym {
             "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "while"
             | "break" | "function" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">"
-            | "&" | "|" | "!" => true,
+            | "&" | "|" | "!" | "&&" | "||" => true,
 
             "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
             | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
