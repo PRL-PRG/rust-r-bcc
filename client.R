@@ -58,6 +58,6 @@ fib_rec <- function(n) {
 f <- fib
 
 fib_rec(5);
-fc <- argtracer::server_cmpfun(fib_rec)
+fc <- argtracer::server_cmpfun(fib_rec, options=list(optimize=2), bundle_env=TRUE)
 print("res");
 fc(5)

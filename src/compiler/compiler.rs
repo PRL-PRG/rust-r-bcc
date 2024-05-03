@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 use crate::sexp::{
     bc::{Bc, BcOp},
@@ -30,8 +30,8 @@ pub struct Compiler {
 
     env: lang::Environment,
     localenv: HashSet<String>,
-    baseenv: Option<lang::NormalEnv>,
-    namespacebase: Option<lang::NormalEnv>,
+    baseenv: Option<Rc<lang::NormalEnv>>,
+    namespacebase: Option<Rc<lang::NormalEnv>>,
 
     pub specials: HashSet<String>,
     pub builtins: HashSet<String>,
@@ -90,18 +90,18 @@ impl Compiler {
         }
     }
 
-    pub fn set_baseenv(&mut self, env: lang::NormalEnv) {
+    pub fn set_baseenv(&mut self, env: Rc<lang::NormalEnv>) {
         self.baseenv = Some(env);
     }
 
-    pub fn set_namespacebase(&mut self, env: lang::NormalEnv) {
+    pub fn set_namespacebase(&mut self, env: Rc<lang::NormalEnv>) {
         self.namespacebase = Some(env);
     }
 
     pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
         let mut closure = closure;
         self.env = lang::NormalEnv::new(
-            Box::new(closure.environment),
+            Box::new(closure.environment.clone()),
             false,
             lang::ListFrame::new(
                 closure
@@ -127,7 +127,7 @@ impl Compiler {
         let lang::Environment::Normal(env) = &mut self.env else {
             unreachable!()
         };
-        closure.environment = std::mem::replace(env.parent.as_mut(), lang::Environment::Global);
+        //closure.environment = std::mem::replace(env.as_ref().parent.as_mut(), lang::Environment::Global);
         closure
     }
 

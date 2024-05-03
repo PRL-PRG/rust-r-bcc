@@ -122,14 +122,14 @@ pub mod data {
                 val => {
                     println!("{val}");
                     unreachable!()
-                }           
+                }
             }
         }
     }
 }
 
 pub mod lang {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, rc::Rc};
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct Sym {
@@ -266,7 +266,7 @@ pub mod lang {
         Global,
         Base,
         Empty,
-        Normal(NormalEnv),
+        Normal(Rc<NormalEnv>),
         Namespace(Vec<super::Sexp>),
     }
 
@@ -322,7 +322,7 @@ pub mod lang {
 
     impl Into<Environment> for NormalEnv {
         fn into(self) -> Environment {
-            Environment::Normal(self)
+            Environment::Normal(Rc::new(self))
         }
     }
 
