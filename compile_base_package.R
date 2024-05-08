@@ -24,25 +24,16 @@ saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
 orig <- sapply(basevars[types == "closure"], \(x) {
     tryCatch(eval(parse(text=deparse(get(x)))[[1]]), error = function(e) {
-        #print("########################################################")
-        #print("########################################################")
-        #print(get(x))
         NULL
     })
 })
 compiled_no_opt <- sapply(basevars[types == "closure"], \(x) {
     tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]]), options=list(optimize=0)), error = function(e) {
-        #print("########################################################")
-        #print("########################################################")
-        #print(get(x))
         NULL
     })
 })
 compiled <- sapply(basevars[types == "closure"], \(x) {
     tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]])), error = function(e) {
-        #print("########################################################")
-        #print("########################################################")
-        #print(get(x))
         NULL
     })
 })

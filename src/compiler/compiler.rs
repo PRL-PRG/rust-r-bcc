@@ -124,10 +124,6 @@ impl Compiler {
         let body =
             SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
         closure.body = Box::new(body);
-        let lang::Environment::Normal(env) = &mut self.env else {
-            unreachable!()
-        };
-        //closure.environment = std::mem::replace(env.as_ref().parent.as_mut(), lang::Environment::Global);
         closure
     }
 
