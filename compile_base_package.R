@@ -1,5 +1,5 @@
 #!/usr/bin/Rscript
-compiler::enableJIT(0)
+tmp <- compiler::enableJIT(0)
 
 cargs = commandArgs(trailingOnly=TRUE);
 
