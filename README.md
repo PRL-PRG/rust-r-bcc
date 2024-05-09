@@ -1,5 +1,5 @@
 # Compile server for GNU R bytecode
-This is implementation of compile server of GNU R bytecode done as a proof of concept. To run the server itself there should not be any additional dependencies other then those handled by Cargo. To run the test and benchmark you have to have GNU R interpreter installed and be able to run the `Rscipt` command.
+This is implementation of compile server of GNU R bytecode done as a proof of concept. To run the server itself there should not be any additional dependencies other then those handled by Cargo. To run the test and benchmark you have to have GNU R interpreter installed and be able to run the `Rscipt` command. To be sure that the test can be run all the R scripts in root folder should be executable.
 
 
 # Running
