@@ -688,6 +688,18 @@ impl Compiler {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXPT_OP);
                 true
             }
+            ":" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::COLON_OP);
+                true
+            }
+            "seq_along" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQALONG_OP);
+                true
+            }
+            "seq_len" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQLEN_OP);
+                true
+            }
             "exp" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXP_OP);
                 true
@@ -734,6 +746,50 @@ impl Compiler {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
 
+                true
+            }
+            "for" => {
+                let sym = &expr.args[0].data;
+                let seq = &expr.args[1].data;
+                let body = &expr.args[2].data;
+                if !matches!(sym.kind, SexpKind::Sym(_)) {
+                    return false;
+                }
+                let taicall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(seq, false, true);
+                self.context.tailcall = taicall;
+                let index = self.code_buffer.add_const(sym.clone());
+                let call_idx = self.code_buffer.add_const(expr.clone().into());
+                if self.check_skip_loopctx(body, true) {
+                    self.cmp_for_body(false, call_idx, body, index);
+                } else {
+                    let orig_ret = self.context.need_returnjmp;
+                    self.context.need_returnjmp = true;
+
+                    let ctx_label = self.code_buffer.make_label();
+                    self.code_buffer
+                        .add_instr_n(BcOp::STARTFOR_OP, &[call_idx, index, DEFLABEL]);
+                    self.code_buffer.set_label(ctx_label);
+
+                    self.code_buffer.put_label(ctx_label);
+
+                    let ljmpend_label = self.code_buffer.make_label();
+                    self.code_buffer
+                        .add_instr_n(BcOp::STARTLOOPCNTXT_OP, &[1, DEFLABEL]);
+                    self.code_buffer.set_label(ljmpend_label);
+
+                    self.cmp_for_body(true, call_idx, body, index);
+
+                    self.code_buffer.put_label(ljmpend_label);
+
+                    self.context.need_returnjmp = orig_ret;
+                }
+                self.code_buffer.add_instr(BcOp::ENDFOR_OP);
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
                 true
             }
             "==" if expr.args.len() == 2 => {
@@ -827,6 +883,14 @@ impl Compiler {
                     false
                 }
             },
+            "next" => match &self.context.loop_ctx {
+                Some(loop_ctx) if loop_ctx.goto_ok => {
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+                    self.code_buffer.set_label(loop_ctx.loop_label);
+                    true
+                }
+                _ => self.cmp_special(expr),
+            },
             "function" => {
                 let forms = &expr.args[0].data;
                 let body = &expr.args[1].data;
@@ -855,6 +919,67 @@ impl Compiler {
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
+
+                true
+            }
+            "return" if expr.args.len() > 1 || self.dots_or_missing(&expr.args) => {
+                self.cmp_special(expr)
+            }
+            "return" => {
+                let mut val: &Sexp = &SexpKind::Nil.into();
+                if expr.args.len() == 1 {
+                    val = &expr.args[0].data;
+                }
+
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(val, false, true);
+                self.context.tailcall = tailcall;
+
+                if self.context.need_returnjmp {
+                    self.code_buffer.add_instr(BcOp::RETURNJMP_OP);
+                } else {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
+            }
+            "$" if expr.args.len() != 2 || self.any_dots(expr) => self.cmp_special(expr),
+            "$" if expr.args.len() == 2 => match &expr.args[1].data.kind {
+                SexpKind::Sym(_) => {
+                    let tmp = CompilerContext::new_arg(&self.context);
+                    let orig = std::mem::replace(&mut self.context, tmp);
+                    self.cmp(&expr.args[0].data, false, true);
+                    let _ = std::mem::replace(&mut self.context, orig);
+
+                    let expr_idx = self.code_buffer.add_const(expr.clone().into());
+                    let sym_idx = self.code_buffer.add_const(expr.args[1].data.clone());
+
+                    self.code_buffer
+                        .add_instr_n(BcOp::DOLLAR_OP, &[expr_idx, sym_idx]);
+                    if self.context.tailcall {
+                        self.code_buffer.add_instr(BcOp::RETURN_OP);
+                    }
+
+                    true
+                }
+                _ => self.cmp_special(expr),
+            },
+            "local" if expr.args.len() == 1 => {
+                let fun_sym = lang::Sym::new("function".into());
+                let fun_sym: lang::Target = fun_sym.into();
+                let lang = lang::Lang::new(
+                    fun_sym,
+                    vec![
+                        SexpKind::Nil.into(),
+                        expr.args[0].clone(),
+                        SexpKind::Nil.into(),
+                    ],
+                );
+                let target: lang::Target = lang.into();
+                let lang = lang::Lang::new(target, vec![]);
+
+                self.cmp(&lang.into(), false, true);
 
                 true
             }
@@ -937,9 +1062,10 @@ impl Compiler {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "while"
-            | "break" | "function" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">"
-            | "&" | "|" | "!" | "&&" | "||" => true,
+            "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
+            | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function" | "local"
+            | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!"
+            | "&&" | "||" | "$" => true,
 
             "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
             | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
@@ -1023,6 +1149,39 @@ impl Compiler {
         self.code_buffer.put_label(end_label);
 
         let _ = std::mem::replace(&mut self.context, orig);
+    }
+
+    fn cmp_for_body(&mut self, skip_init: bool, call_idx: i32, body: &Sexp, sym_idx: i32) {
+        let body_label = self.code_buffer.make_label();
+        let loop_label = self.code_buffer.make_label();
+        let end_label = self.code_buffer.make_label();
+
+        // original compiler has check if sym_idx (ci) is null
+        // this is only possible only when skip loop ctx is not
+        // possible so I just did it by bool flag
+        if skip_init {
+            self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+            self.code_buffer.set_label(loop_label);
+        } else {
+            self.code_buffer
+                .add_instr_n(BcOp::STARTFOR_OP, &[call_idx, sym_idx, DEFLABEL]);
+            self.code_buffer.set_label(loop_label);
+        }
+
+        self.code_buffer.put_label(body_label);
+
+        let tmp = CompilerContext::new_loop(&self.context, loop_label, end_label);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        self.cmp(body, false, true);
+
+        let _ = std::mem::replace(&mut self.context, orig);
+
+        self.code_buffer.add_instr(BcOp::POP_OP);
+        self.code_buffer.put_label(loop_label);
+        self.code_buffer.add_instr2(BcOp::STEPFOR_OP, DEFLABEL);
+        self.code_buffer.set_label(body_label);
+        self.code_buffer.put_label(end_label);
     }
 
     fn check_skip_loopctx_lang(&self, lang: &lang::Lang, break_ok: bool) -> bool {
