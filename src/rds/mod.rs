@@ -1,3 +1,5 @@
+use bumpalo::Bump;
+
 use crate::sexp::sexp::{lang, Sexp, SexpKind};
 
 pub mod rds_reader;
@@ -25,53 +27,68 @@ pub struct RDSHeader {
     min_reader_version: i32,
 }
 
-pub struct RDSResult {
+pub struct RDSResult<'a> {
     pub header: RDSHeader,
-    pub data: Sexp,
+    pub data: &'a mut Sexp<'a>,
 }
 
-impl RDSResult {
-    pub fn new(header: RDSHeader, data: Sexp) -> Self {
+impl<'a> RDSResult<'a> {
+    pub fn new(header: RDSHeader, data: &'a mut Sexp) -> Self {
         Self { header, data }
     }
 }
 
-#[derive(Default)]
-pub struct RefsTable {
-    data: Vec<Sexp>,
+pub struct RefsTable<'a> {
+    data: Vec<&'a mut Sexp<'a>>,
+    placeholder: &'a mut Sexp<'a>,
 }
 
-impl RefsTable {
-    fn add_ref(&mut self, data: &Sexp) -> i32 {
-        if let Some(idx) = self.data.iter().position(|x| x == data) {
+impl<'a> RefsTable<'a> {
+    fn new(arena: &'a mut Bump) -> Self {
+        Self {
+            data: vec![],
+            placeholder: arena.alloc(SexpKind::Nil.into()),
+        }
+    }
+
+    fn add_ref(&mut self, data: &'a mut Sexp) -> i32 {
+        if let Some(idx) = self
+            .data
+            .into_iter()
+            .position(|x| std::ptr::eq(x, data) || x == data)
+        {
             return idx as i32;
         }
-        self.data.push(data.clone());
+        self.data.push(data);
         (self.data.len() - 1) as i32
     }
 
-    fn find(&mut self, data: &Sexp) -> Option<i32> {
-        if let Some(idx) = self.data.iter().position(|x| x == data) {
+    fn find(&mut self, data: &'a mut Sexp) -> Option<i32> {
+        if let Some(idx) = self
+            .data
+            .into_iter()
+            .position(|x| std::ptr::eq(x, data) || x == data)
+        {
             Some(idx as i32)
         } else {
             None
         }
     }
 
-    fn get_ref(&mut self, index: i32) -> Option<Sexp> {
+    fn get_ref(&mut self, index: i32) -> Option<&'a mut Sexp> {
         if index < 0 || index > self.data.len() as i32 {
             None
         } else {
-            Some(self.data[index as usize].clone())
+            Some(self.data[index as usize])
         }
     }
 
     fn add_placeholder(&mut self) -> i32 {
-        self.data.push(SexpKind::Nil.into());
+        self.data.push(self.placeholder);
         (self.data.len() - 1) as i32
     }
 
-    fn update_ref(&mut self, index: i32, data: Sexp) -> bool {
+    fn update_ref(&mut self, index: i32, data: &'a mut Sexp) -> bool {
         if index < 0 || index > self.data.len() as i32 {
             false
         } else {
@@ -159,7 +176,7 @@ mod string_format {
     pub const ASCII: i32 = 1 << 6;
 }
 
-impl From<&Sexp> for Flag {
+impl From<&Sexp<'_>> for Flag {
     fn from(value: &Sexp) -> Self {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,

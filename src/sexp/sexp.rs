@@ -5,15 +5,15 @@ pub struct Loc {
     col: usize,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct MetaData {
-    pub attr: Option<Box<Sexp>>,
+#[derive(Debug, PartialEq, Default)]
+pub struct MetaData<'a> {
+    pub attr: Option<&'a mut Sexp<'a>>,
 }
 
-impl MetaData {
+impl MetaData<'_> {
     pub fn is_obj(&self) -> bool {
         if self.attr.is_some() {
-            let attr = self.attr.clone().unwrap();
+            let attr = self.attr.unwrap();
             if let Sexp {
                 kind: SexpKind::List(list),
                 ..
@@ -21,7 +21,7 @@ impl MetaData {
             {
                 list.into_iter().any(|x| {
                     let x = match x.tag {
-                        Some(x) if x.as_str() == "class" => true,
+                        Some(x) if x == "class" => true,
                         _ => false,
                     };
                     x
@@ -35,13 +35,13 @@ impl MetaData {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Sexp {
-    pub kind: SexpKind,
-    pub metadata: MetaData,
+#[derive(Debug, PartialEq)]
+pub struct Sexp<'a> {
+    pub kind: SexpKind<'a>,
+    pub metadata: MetaData<'a>,
 }
 
-impl From<SexpKind> for Sexp {
+impl<'a> From<SexpKind<'a>> for Sexp<'a> {
     fn from(kind: SexpKind) -> Self {
         Sexp {
             kind,
@@ -50,51 +50,70 @@ impl From<SexpKind> for Sexp {
     }
 }
 
-impl Sexp {
-    pub fn set_attr(&mut self, attr: Sexp) {
-        self.metadata.attr = Some(Box::new(attr))
+impl Sexp<'_> {
+    pub fn set_attr(&mut self, attr: &mut Sexp) {
+        self.metadata.attr = Some(attr);
     }
 }
 
 pub mod data {
+    use std::ops::Deref;
+
     use super::{Sexp, SexpKind};
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct TaggedSexp {
-        pub tag: Option<String>,
-        pub data: Sexp,
+    #[derive(Debug, PartialEq)]
+    pub struct TaggedSexp<'a> {
+        pub tag: Option<&'a str>,
+        pub data: Sexp<'a>,
     }
 
-    impl TaggedSexp {
+    impl TaggedSexp<'_> {
         pub fn new(data: Sexp) -> Self {
             Self { tag: None, data }
         }
 
-        pub fn new_with_tag(data: Sexp, tag: String) -> Self {
+        pub fn new_with_tag<'a>(data: Sexp, tag: &'a str) -> Self {
             let tag = Some(tag);
             Self { tag, data }
         }
     }
 
-    impl From<Sexp> for TaggedSexp {
+    impl<'a> From<Sexp<'a>> for TaggedSexp<'a> {
         fn from(value: Sexp) -> Self {
             Self::new(value)
         }
     }
 
-    impl From<SexpKind> for TaggedSexp {
+    impl<'a> From<SexpKind<'a>> for TaggedSexp<'a> {
         fn from(value: SexpKind) -> Self {
             Self::new(value.into())
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
+    #[derive(Debug, PartialEq)]
     pub struct Complex {
         pub real: f64,
         pub imaginary: f64,
     }
 
-    pub type List = Vec<TaggedSexp>;
+    #[derive(PartialEq)]
+    pub struct List<'a> {
+        data: &'a [TaggedSexp<'a>],
+    }
+
+    impl std::fmt::Debug for List<'_> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self.data)
+        }
+    }
+
+    impl<'a> Deref for List<'a> {
+        type Target = [TaggedSexp<'a>];
+
+        fn deref(&self) -> &Self::Target {
+            &self.data
+        }
+    }
 
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub enum Logic {
@@ -131,104 +150,69 @@ pub mod data {
 pub mod lang {
     use std::{collections::HashMap, rc::Rc};
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct Sym {
-        pub(crate) data: String,
+    #[derive(Debug, PartialEq)]
+    pub struct Sym<'a> {
+        pub(crate) data: &'a str,
     }
 
-    impl Sym {
-        pub fn new(data: String) -> Self {
+    impl<'a> Sym<'a> {
+        pub fn new(data: &'a str) -> Self {
             Self { data }
         }
     }
 
-    impl From<&str> for Sym {
-        fn from(value: &str) -> Self {
-            Sym {
-                data: value.to_string(),
-            }
-        }
-    }
-
-    impl Into<super::Sexp> for Sym {
-        fn into(self) -> super::Sexp {
+    impl<'a> Into<super::Sexp<'a>> for Sym<'a> {
+        fn into(self) -> super::Sexp<'a> {
             super::SexpKind::Sym(self).into()
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub enum Target {
-        Lang(Box<Lang>), // expression
-        Sym(Sym),        // named
+    #[derive(Debug, PartialEq)]
+    pub enum Target<'a> {
+        Lang(&'a mut Lang<'a>), // expression
+        Sym(Sym<'a>),           // named
     }
 
-    impl From<Sym> for Target {
+    impl<'a> From<Sym<'a>> for Target<'a> {
         fn from(value: Sym) -> Self {
             Target::Sym(value)
         }
     }
 
-    impl From<Lang> for Target {
-        fn from(value: Lang) -> Self {
-            Target::Lang(Box::new(value))
+    impl<'a> From<&'a mut Lang<'a>> for Target<'a> {
+        fn from(value: &'a mut Lang) -> Self {
+            Target::Lang(value)
         }
     }
 
-    impl Into<super::Sexp> for Target {
-        fn into(self) -> super::Sexp {
-            match self {
-                Target::Lang(x) => super::SexpKind::Lang(*x).into(),
-                Target::Sym(x) => super::SexpKind::Sym(x).into(),
-            }
-        }
+    #[derive(Debug, PartialEq)]
+    pub struct Lang<'a> {
+        pub(crate) target: Target<'a>,
+        pub(crate) args: super::data::List<'a>,
     }
 
-    impl Into<super::Sexp> for &Target {
-        fn into(self) -> super::Sexp {
-            match self {
-                Target::Lang(x) => super::SexpKind::Lang(*x.clone()).into(),
-                Target::Sym(x) => super::SexpKind::Sym(x.clone()).into(),
-            }
-        }
-    }
-
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct Lang {
-        pub(crate) target: Target,
-        pub(crate) args: super::data::List,
-    }
-
-    impl Into<super::Sexp> for Lang {
-        fn into(self) -> super::Sexp {
-            super::SexpKind::Lang(self).into()
-        }
-    }
-
-    impl Lang {
-        pub fn new(target: Target, args: super::data::List) -> Self {
+    impl<'a> Lang<'a> {
+        pub fn new(target: Target<'a>, args: super::data::List<'a>) -> Self {
             Self { target, args }
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct Formal {
-        pub name: Sym,
-        pub value: Box<super::Sexp>,
+    #[derive(Debug, PartialEq)]
+    pub struct Formal<'a> {
+        pub name: Sym<'a>,
+        pub value: super::Sexp<'a>,
     }
 
-    impl Formal {
-        pub fn new(name: Sym, value: super::Sexp) -> Self {
-            Self {
-                name,
-                value: Box::new(value),
-            }
+    impl<'a> Formal<'a> {
+        pub fn new(name: Sym<'a>, value: super::Sexp<'a>) -> Self {
+            Self { name, value }
         }
     }
 
-    impl TryInto<Formal> for super::data::TaggedSexp {
+    impl<'a> TryInto<Formal<'a>> for super::data::TaggedSexp<'a> {
         type Error = crate::rds::rds_reader::RDSReaderError;
 
-        fn try_into(self) -> Result<Formal, Self::Error> {
+        fn try_into(self) -> Result<Formal<'a>, Self::Error> {
             match self.tag {
                 Some(name) => Ok(Formal::new(Sym::new(name), self.data)),
                 None => Err(crate::rds::rds_reader::RDSReaderError::DataError(
@@ -238,15 +222,19 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct Closure {
-        pub(crate) formals: Vec<Formal>,
-        pub(crate) body: Box<super::Sexp>,
-        pub(crate) environment: Environment,
+    #[derive(Debug, PartialEq)]
+    pub struct Closure<'a> {
+        pub(crate) formals: &'a [Formal<'a>],
+        pub(crate) body: Box<super::Sexp<'a>>,
+        pub(crate) environment: Environment<'a>,
     }
 
-    impl Closure {
-        pub fn new(formals: Vec<Formal>, body: super::Sexp, environment: Environment) -> Self {
+    impl<'a> Closure<'a> {
+        pub fn new(
+            formals: &'a [Formal<'a>],
+            body: super::Sexp<'a>,
+            environment: Environment,
+        ) -> Self {
             Self {
                 formals,
                 body: Box::new(body),
@@ -255,22 +243,22 @@ pub mod lang {
         }
     }
 
-    impl Into<super::Sexp> for Closure {
-        fn into(self) -> super::Sexp {
+    impl<'a> Into<super::Sexp<'a>> for Closure<'a> {
+        fn into(self) -> super::Sexp<'a> {
             super::SexpKind::Closure(self).into()
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub enum Environment {
+    #[derive(Debug, PartialEq)]
+    pub enum Environment<'a> {
         Global,
         Base,
         Empty,
-        Normal(Rc<NormalEnv>),
-        Namespace(Vec<super::Sexp>),
+        Normal(NormalEnv<'a>),
+        Namespace(Vec<super::Sexp<'a>>),
     }
 
-    impl Environment {
+    impl<'a> Environment<'a> {
         pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
             match self {
                 Environment::Global
@@ -282,17 +270,17 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq, Clone)]
-    pub struct NormalEnv {
-        pub parent: Box<Environment>,
+    #[derive(Debug, PartialEq)]
+    pub struct NormalEnv<'a> {
+        pub parent: &'a Environment<'a>,
         pub locked: bool,
-        pub frame: ListFrame,
-        pub hash_frame: HashFrame,
+        pub frame: ListFrame<'a>,
+        pub hash_frame: HashFrame<'a>,
     }
 
-    impl NormalEnv {
+    impl<'a> NormalEnv<'a> {
         pub fn new(
-            parent: Box<Environment>,
+            parent: &'a Environment,
             locked: bool,
             frame: ListFrame,
             hash_frame: HashFrame,
@@ -320,31 +308,25 @@ pub mod lang {
         }
     }
 
-    impl Into<Environment> for NormalEnv {
-        fn into(self) -> Environment {
-            Environment::Normal(Rc::new(self))
+    impl<'a> Into<Environment<'a>> for NormalEnv<'a> {
+        fn into(self) -> Environment<'a> {
+            Environment::Normal(self)
         }
     }
 
-    impl Into<super::Sexp> for Environment {
-        fn into(self) -> super::Sexp {
-            super::SexpKind::Environment(self).into()
-        }
+    #[derive(PartialEq, Default)]
+    pub struct ListFrame<'a> {
+        pub data: Option<super::data::List<'a>>,
+        pub env: HashMap<&'a str, usize>,
     }
 
-    #[derive(PartialEq, Clone, Default)]
-    pub struct ListFrame {
-        pub data: Option<super::data::List>,
-        pub env: HashMap<String, usize>,
-    }
-
-    impl std::fmt::Debug for ListFrame {
+    impl std::fmt::Debug for ListFrame<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{:?}", self.data)
         }
     }
 
-    impl ListFrame {
+    impl ListFrame<'_> {
         pub fn new(data: super::data::List) -> Self {
             let mut env = HashMap::default();
             for (index, item) in data.iter().enumerate() {
@@ -369,19 +351,19 @@ pub mod lang {
         }
     }
 
-    #[derive(PartialEq, Clone, Default)]
-    pub struct HashFrame {
-        pub data: Option<Vec<super::Sexp>>,
-        pub env: HashMap<String, (usize, usize)>,
+    #[derive(PartialEq, Default)]
+    pub struct HashFrame<'a> {
+        pub data: Option<Vec<super::Sexp<'a>>>,
+        pub env: HashMap<&'a str, (usize, usize)>,
     }
 
-    impl std::fmt::Debug for HashFrame {
+    impl std::fmt::Debug for HashFrame<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{:?}", self.data)
         }
     }
 
-    impl HashFrame {
+    impl HashFrame<'_> {
         pub fn new(data: Vec<super::Sexp>) -> Self {
             let mut env = HashMap::new();
 
@@ -420,41 +402,41 @@ pub mod lang {
         }
     }
 
-    impl Into<super::SexpKind> for Environment {
-        fn into(self) -> super::SexpKind {
+    impl<'a> Into<super::SexpKind<'a>> for Environment<'a> {
+        fn into(self) -> super::SexpKind<'a> {
             super::SexpKind::Environment(self)
         }
     }
 }
 
 // SXP
-#[derive(Debug, PartialEq, Clone)]
-pub enum SexpKind {
-    Sym(lang::Sym),
-    List(data::List),
+#[derive(Debug, PartialEq)]
+pub enum SexpKind<'a> {
+    Sym(lang::Sym<'a>),
+    List(data::List<'a>),
     Nil,
 
     // language contructs
-    Closure(lang::Closure),
-    Environment(lang::Environment),
+    Closure(lang::Closure<'a>),
+    Environment(lang::Environment<'a>),
     Promise {
-        environment: lang::Environment,
-        expr: Box<Sexp>,
-        value: Box<Sexp>,
+        environment: lang::Environment<'a>,
+        expr: &'a mut Sexp<'a>,
+        value: &'a mut Sexp<'a>,
     },
-    Lang(lang::Lang),
+    Lang(lang::Lang<'a>),
     Bc(Bc),
-    Buildin(lang::Sym),
+    Buildin(lang::Sym<'a>),
 
     // vecs
-    Char(Vec<char>),
+    Char(&'a [char]),
     NAString,
-    Logic(Vec<data::Logic>),
-    Real(Vec<f64>),
-    Int(Vec<i32>),
-    Complex(Vec<data::Complex>),
-    Str(Vec<String>),
-    Vec(Vec<Sexp>),
+    Logic(&'a [data::Logic]),
+    Real(&'a [f64]),
+    Int(&'a [i32]),
+    Complex(&'a [data::Complex]),
+    Str(&'a [String]),
+    Vec(&'a [Sexp<'a>]),
 
     MissingArg,
 

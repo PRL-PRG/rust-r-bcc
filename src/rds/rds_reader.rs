@@ -2,6 +2,8 @@ use std::io::BufReader;
 
 use std::io::Read;
 
+use bumpalo::Bump;
+
 use crate::rds::RDSHeader;
 use crate::sexp::bc::Bc;
 use crate::sexp::sexp::data;
@@ -60,7 +62,7 @@ impl TryInto<lang::ListFrame> for Sexp {
     }
 }
 
-pub trait RDSReader: Read {
+pub trait RDSReader<'a>: Read {
     fn read_byte(&mut self) -> Result<u8, RDSReaderError> {
         let mut buf: [u8; 1] = [0];
         self.read(&mut buf)?;
@@ -102,9 +104,9 @@ pub trait RDSReader: Read {
         Ok(String::from_utf8(buf)?)
     }
 
-    fn read_rds(&mut self) -> Result<RDSResult, RDSReaderError> {
+    fn read_rds(&mut self, arena: &'a mut Bump) -> Result<RDSResult, RDSReaderError> {
         let header = self.read_header()?;
-        let mut refs = RefsTable::default();
+        let mut refs = RefsTable::new(arena);
         let item = self.read_item(&mut refs)?;
 
         Ok(RDSResult::new(header, item))
@@ -138,7 +140,7 @@ pub trait RDSReader: Read {
         }
     }
 
-    fn read_item(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_item(&mut self, refs: &mut RefsTable) -> Result<&'a mut Sexp, RDSReaderError> {
         let flag = self.read_flags()?;
         self.read_item_flags(refs, flag)
     }
@@ -151,7 +153,7 @@ pub trait RDSReader: Read {
         &mut self,
         refs: &mut RefsTable,
         flag: Flag,
-    ) -> Result<Sexp, RDSReaderError> {
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let mut sexp: Sexp = match flag.sexp_type {
             sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
             sexptype::REALSXP => self.read_realsxp()?,
@@ -292,46 +294,43 @@ pub trait RDSReader: Read {
         }
     }
 
-    fn read_realsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_realsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
-        let mut data = vec![];
-        data.reserve(len);
+        let data = arena.alloc_slice_fill_default(len);
 
-        for _ in 0..len {
-            data.push(self.read_double()?)
+        for i in 0..len {
+            data[i] = self.read_double()?;
         }
 
-        Ok(SexpKind::Real(data).into())
+        Ok(arena.alloc(SexpKind::Real(data).into()))
     }
 
-    fn read_intsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_intsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
-        let mut data = vec![];
-        data.reserve(len);
+        let data = arena.alloc_slice_fill_default(len);
 
-        for _ in 0..len {
-            data.push(self.read_int()?)
+        for i in 0..len {
+            data[i] = self.read_int()?
         }
 
-        Ok(SexpKind::Int(data).into())
+        Ok(arena.alloc(SexpKind::Int(data).into()))
     }
 
-    fn read_lglsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_lglsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
-        let mut data = vec![];
-        data.reserve(len);
+        let data = arena.alloc_slice_fill_copy(len, data::Logic::True);
 
-        for _ in 0..len {
-            data.push(self.read_int()?.into())
+        for i in 0..len {
+            data[i] = self.read_int()?.into();
         }
 
-        Ok(SexpKind::Logic(data).into())
+        Ok(arena.alloc(SexpKind::Logic(data).into()))
     }
 
-    fn read_cplsxp(&mut self) -> Result<Sexp, RDSReaderError> {
+    fn read_cplsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
         let mut data = vec![];
         data.reserve(len);
@@ -514,7 +513,7 @@ pub trait RDSReader: Read {
         let environment = match environment.kind {
             SexpKind::Environment(environment) => environment,
             SexpKind::Nil => lang::Environment::Empty.into(),
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let mut res: Sexp = match formals.kind {
