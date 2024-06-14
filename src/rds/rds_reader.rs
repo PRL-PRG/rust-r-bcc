@@ -10,6 +10,7 @@ use crate::sexp::sexp::data;
 use crate::sexp::sexp::lang;
 use crate::sexp::sexp::Sexp;
 use crate::sexp::sexp::SexpKind;
+use crate::sexp::sexp_alloc::Alloc;
 
 use super::sexptype;
 use super::Flag;
@@ -32,33 +33,6 @@ impl From<std::io::Error> for RDSReaderError {
 impl From<std::string::FromUtf8Error> for RDSReaderError {
     fn from(value: std::string::FromUtf8Error) -> Self {
         RDSReaderError::DataError(format!("UTF-8 error {value:?}"))
-    }
-}
-
-impl TryInto<lang::HashFrame> for Sexp {
-    type Error = RDSReaderError;
-
-    fn try_into(self) -> Result<lang::HashFrame, Self::Error> {
-        match self.kind {
-            SexpKind::Vec(vec) => Ok(lang::HashFrame::new(vec)),
-            //SexpKind::List(list) => Ok(lang::HashFrame::new(vec![SexpKind::List(list).into()])),
-            SexpKind::Nil => Ok(lang::HashFrame::default()),
-            data => Err(RDSReaderError::DataError(format!(
-                "Hash frame must be vector got {data}"
-            ))),
-        }
-    }
-}
-
-impl TryInto<lang::ListFrame> for Sexp {
-    type Error = RDSReaderError;
-
-    fn try_into(self) -> Result<lang::ListFrame, Self::Error> {
-        match self.kind {
-            SexpKind::List(list) => Ok(lang::ListFrame::new(list)),
-            SexpKind::Nil => Ok(lang::ListFrame::default()),
-            _ => Err(RDSReaderError::DataError("List frame must be list".into())),
-        }
     }
 }
 
@@ -91,7 +65,11 @@ pub trait RDSReader<'a>: Read {
         Ok(f64::from_be_bytes(buf))
     }
 
-    fn read_string_len(&mut self, len: i32) -> Result<String, RDSReaderError> {
+    fn read_string_len(
+        &mut self,
+        len: i32,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a str, RDSReaderError> {
         let len = len as usize;
         let mut buf: Vec<u8> = vec![];
         buf.resize(len, 0);
@@ -101,13 +79,15 @@ pub trait RDSReader<'a>: Read {
                 "Cannot read string of len {len}"
             )));
         }
-        Ok(String::from_utf8(buf)?)
+        let tmp = String::from_utf8(buf)?;
+        let data = arena.alloc_str(tmp.as_str());
+        Ok(data)
     }
 
-    fn read_rds(&mut self, arena: &'a mut Bump) -> Result<RDSResult, RDSReaderError> {
+    fn read_rds(&mut self, arena: &'a mut Alloc) -> Result<RDSResult, RDSReaderError> {
         let header = self.read_header()?;
         let mut refs = RefsTable::new(arena);
-        let item = self.read_item(&mut refs)?;
+        let item = self.read_item(&mut refs, arena)?;
 
         Ok(RDSResult::new(header, item))
     }
@@ -127,11 +107,14 @@ pub trait RDSReader<'a>: Read {
             min_reader_version,
         };
 
+        let mut temp_arena = Bump::new();
+        let mut temp_arena = Alloc::new(&mut temp_arena);
+
         match format_version {
             2 => Ok(res),
             3 => {
                 let len = self.read_int()?;
-                self.read_string_len(len)?;
+                self.read_string_len(len, &mut temp_arena)?;
                 Ok(res)
             }
             _ => Err(RDSReaderError::DataError(format!(
@@ -140,12 +123,20 @@ pub trait RDSReader<'a>: Read {
         }
     }
 
-    fn read_item(&mut self, refs: &mut RefsTable) -> Result<&'a mut Sexp, RDSReaderError> {
+    fn read_item(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let flag = self.read_flags()?;
-        self.read_item_flags(refs, flag)
+        self.read_item_flags(refs, flag, arena)
     }
 
-    fn lookup_class(&self, class_sym: &str, package_sym: &str) -> Result<Sexp, RDSReaderError> {
+    fn lookup_class(
+        &self,
+        class_sym: &str,
+        package_sym: &str,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         todo!()
     }
 
@@ -153,44 +144,49 @@ pub trait RDSReader<'a>: Read {
         &mut self,
         refs: &mut RefsTable,
         flag: Flag,
+        arena: &'a mut Alloc,
     ) -> Result<&'a mut Sexp, RDSReaderError> {
-        let mut sexp: Sexp = match flag.sexp_type {
-            sexptype::NILVALUE_SXP | sexptype::NILSXP => SexpKind::Nil.into(),
-            sexptype::REALSXP => self.read_realsxp()?,
-            sexptype::INTSXP => self.read_intsxp()?,
-            sexptype::LISTSXP => self.read_listsxp(refs, flag)?,
-            sexptype::VECSXP => self.read_vecsxp(refs)?,
-            sexptype::SYMSXP => self.read_symsxp(refs)?,
-            sexptype::STRSXP => self.read_strsxp(refs)?,
-            sexptype::CHARSXP => self.read_charsxp()?,
-            sexptype::LANGSXP => self.read_langsxp(refs, flag)?,
-            sexptype::CLOSXP => self.read_closxp(refs, flag)?,
-            sexptype::ENVSXP => self.read_envsxp(refs)?,
-            sexptype::GLOBALENV_SXP => {
-                let tmp: SexpKind = lang::Environment::Global.into();
-                tmp.into()
+        let mut sexp: &'a mut Sexp = match flag.sexp_type {
+            sexptype::NILVALUE_SXP | sexptype::NILSXP => arena.nil,
+            sexptype::REALSXP => self.read_realsxp(arena)?,
+            sexptype::INTSXP => self.read_intsxp(arena)?,
+            sexptype::LISTSXP => {
+                arena.alloc(SexpKind::List(self.read_listsxp(refs, flag, arena)?).into())
             }
-            sexptype::EMPTYENV_SXP => {
-                let tmp: SexpKind = lang::Environment::Empty.into();
-                tmp.into()
+            sexptype::VECSXP => {
+                let res = self.read_vecsxp(refs, arena)?; 
+                arena.alloc(SexpKind::Vec(res).into())
             }
-            sexptype::BASEENV_SXP | sexptype::BASENAMESPACE_SXP => {
-                let tmp: SexpKind = lang::Environment::Base.into();
-                tmp.into()
+            sexptype::SYMSXP => {
+                let data = self.read_symsxp(refs, arena)?;
+                let data = arena.alloc(SexpKind::Sym(data).into());
+                refs.add_ref(data);
+                data
             }
-            sexptype::MISSINGARG_SXP => SexpKind::MissingArg.into(),
+            sexptype::STRSXP => self.read_strsxp(refs, arena)?,
+            sexptype::CHARSXP => self.read_charsxp(arena)?,
+            sexptype::LANGSXP => {
+                let data = self.read_langsxp(refs, flag, arena)?;
+                arena.alloc(SexpKind::Lang(data).into())
+            }
+            sexptype::CLOSXP => self.read_closxp(refs, flag, arena)?,
+            sexptype::ENVSXP => self.read_envsxp(refs, arena)?,
+            sexptype::GLOBALENV_SXP => arena.global_env,
+            sexptype::EMPTYENV_SXP => arena.empty_env,
+            sexptype::BASEENV_SXP | sexptype::BASENAMESPACE_SXP => arena.base_env,
+            sexptype::MISSINGARG_SXP => arena.missing,
             sexptype::REFSXP => self.read_refsxp(refs, flag)?,
-            sexptype::BCODESXP => self.read_bc(refs)?,
-            sexptype::LGLSXP => self.read_lglsxp()?,
+            sexptype::BCODESXP => self.read_bc(refs, arena)?,
+            sexptype::LGLSXP => self.read_lglsxp(arena)?,
             sexptype::BUILTINSXP | sexptype::SPECIALSXP => {
                 let len = self.read_int()?;
-                let name = self.read_string_len(len)?;
-                SexpKind::Buildin(name.as_str().into()).into()
+                let name = self.read_string_len(len, arena)?;
+                arena.alloc(SexpKind::Buildin(lang::Sym::new(name)).into())
             }
             sexptype::ALTREP_SXP => {
-                let info = self.read_item(refs)?;
-                let state = self.read_item(refs)?;
-                let attr = self.read_item(refs)?;
+                let info = self.read_item(refs, arena)?;
+                let state = self.read_item(refs, arena)?;
+                let attr = self.read_item(refs, arena)?;
                 let info = match info.kind {
                     SexpKind::List(list) if list.len() == 3 => list,
                     _ => {
@@ -216,18 +212,18 @@ pub trait RDSReader<'a>: Read {
 
                 todo!()
             }
-            sexptype::PROMSXP => self.read_promsxp(flag, refs)?,
-            sexptype::CPLXSXP => self.read_cplsxp()?,
+            sexptype::PROMSXP => self.read_promsxp(flag, refs, arena)?,
+            sexptype::CPLXSXP => self.read_cplsxp(arena)?,
             sexptype::NAMESPACESXP => {
                 let _ = self.read_int()?;
                 let len = self.read_int()?;
                 let mut res = vec![];
                 for _ in 0..len {
-                    res.push(self.read_item(refs)?);
+                    res.push(self.read_item(refs, arena)? as &'a Sexp);
                 }
-                let res = lang::Environment::Namespace(res);
-                let res = res.into();
-                refs.add_ref(&res);
+                let res = lang::Environment::Namespace(arena.alloc_slice_copy(res.as_slice()));
+                let res = arena.alloc(SexpKind::Environment(res).into());
+                refs.add_ref(res);
                 res
             }
             //sexptype::EXTPTRSXP => self.chain
@@ -247,7 +243,7 @@ pub trait RDSReader<'a>: Read {
             && flag.sexp_type != sexptype::ENVSXP
             && flag.sexp_type != sexptype::CLOSXP
         {
-            sexp.set_attr(self.read_item(refs)?);
+            sexp.set_attr(self.read_item(refs, arena)?);
         }
 
         Ok(sexp)
@@ -294,7 +290,7 @@ pub trait RDSReader<'a>: Read {
         }
     }
 
-    fn read_realsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
+    fn read_realsxp(&mut self, arena: &'a mut Alloc) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
         let data = arena.alloc_slice_fill_default(len);
@@ -306,7 +302,7 @@ pub trait RDSReader<'a>: Read {
         Ok(arena.alloc(SexpKind::Real(data).into()))
     }
 
-    fn read_intsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
+    fn read_ints(&mut self, arena: &'a mut Alloc) -> Result<&'a [i32], RDSReaderError> {
         let len = self.read_len()?;
 
         let data = arena.alloc_slice_fill_default(len);
@@ -314,11 +310,14 @@ pub trait RDSReader<'a>: Read {
         for i in 0..len {
             data[i] = self.read_int()?
         }
-
-        Ok(arena.alloc(SexpKind::Int(data).into()))
+        Ok(data)
     }
 
-    fn read_lglsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
+    fn read_intsxp(&mut self, arena: &'a mut Alloc) -> Result<&'a mut Sexp, RDSReaderError> {
+        Ok(arena.alloc(SexpKind::Int(self.read_ints(arena)?).into()))
+    }
+
+    fn read_lglsxp(&mut self, arena: &'a mut Alloc) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
 
         let data = arena.alloc_slice_fill_copy(len, data::Logic::True);
@@ -330,30 +329,43 @@ pub trait RDSReader<'a>: Read {
         Ok(arena.alloc(SexpKind::Logic(data).into()))
     }
 
-    fn read_cplsxp(&mut self, arena: &'a mut Bump) -> Result<&'a mut Sexp, RDSReaderError> {
+    fn read_cplsxp(&mut self, arena: &'a mut Alloc) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
-        let mut data = vec![];
-        data.reserve(len);
-        for _ in 0..len {
-            data.push(self.read_complex()?);
+        let data = arena.alloc_slice_fill_default(len);
+        for i in 0..len {
+            data[i] = self.read_complex()?;
         }
-        Ok(SexpKind::Complex(data).into())
+        Ok(arena.alloc(SexpKind::Complex(data).into()))
     }
 
-    fn read_vecsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_vecsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut [&'a Sexp<'a>], RDSReaderError> {
         let len = self.read_len()?;
 
         let mut data = vec![];
         data.reserve(len);
 
         for _ in 0..len {
-            data.push(self.read_item(refs)?)
+            // must be demoted to immutable because the mutable
+            // reference cannot be copied, which is done
+            // in alloc_slice_copy
+            data.push(self.read_item(refs, arena)? as &'a Sexp)
         }
 
-        Ok(SexpKind::Vec(data).into())
+        let data = arena.alloc_slice_copy(data.as_slice());
+
+        Ok(data)
     }
 
-    fn read_listsxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_listsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        flags: Flag,
+        arena: &'a mut Alloc,
+    ) -> Result<data::List<'a>, RDSReaderError> {
         // read in order attrib tag and value
         // only value is mandatory
 
@@ -362,18 +374,18 @@ pub trait RDSReader<'a>: Read {
 
         loop {
             let attr = if flags.has_attributes {
-                Some(self.read_item(refs)?)
+                Some(self.read_item(refs, arena)?)
             } else {
                 None
             };
 
             let tag = if flags.has_tag {
-                Some(self.read_item(refs)?)
+                Some(self.read_item(refs, arena)?)
             } else {
                 None
             };
 
-            let mut value = self.read_item(refs)?;
+            let mut value = self.read_item(refs, arena)?;
             if let Some(attr) = attr {
                 value.set_attr(attr);
             }
@@ -383,84 +395,106 @@ pub trait RDSReader<'a>: Read {
                 ..
             }) = tag
             {
-                data.push(data::TaggedSexp::new_with_tag(value.into(), tag.data));
+                data.push(data::TaggedSexp::new_with_tag(value, tag.data));
             } else {
                 data.push(value.into());
             }
 
             flags = self.read_flags()?;
             if flags.sexp_type != sexptype::LISTSXP {
-                let last = self.read_item_flags(refs, flags)?;
+                let last = self.read_item_flags(refs, flags, arena)?;
                 match &last.kind {
                     SexpKind::Nil => (),
                     _ => data.push(last.into()),
                 }
-                return Ok(SexpKind::List(data).into());
+                let data = arena.alloc_slice_clone(data.as_slice());
+                return Ok(data::List { data });
             }
         }
     }
 
-    fn read_symsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_string(&mut self, arena: &'a mut Alloc) -> Result<Option<&'a str>, RDSReaderError> {
+        let len = self.read_int()?;
+        if len == i32::MAX {
+            return Ok(None);
+        }
+        let len = len as usize;
+        let mut data: Vec<u8> = vec![];
+        data.reserve(len);
+
+        for _ in 0..len {
+            data.push(self.read_byte()?)
+        }
+
+        let data = String::from_utf8(data)?;
+        Ok(Some(arena.alloc_str(data.as_str())))
+    }
+
+    fn read_symsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<lang::Sym, RDSReaderError> {
         let _ = self.read_flags()?;
-        let print_name = self.read_charsxp()?;
-        if let SexpKind::Char(chars) = print_name.kind {
-            let res: Sexp = SexpKind::Sym(lang::Sym::new(String::from_utf8(
-                chars.iter().map(|x| *x as u8).collect(),
-            )?))
-            .into();
 
-            refs.add_ref(&res);
-            return Ok(res);
-        }
-        Err(RDSReaderError::DataError(
-            "Symsxp must be created from charsxp".into(),
-        ))
+        let data = match self.read_string(arena)? {
+            Some(data) => data,
+            None => return Err(RDSReaderError::DataError("Symbol cannot be NA".into())),
+        };
+
+        Ok(lang::Sym::new(data))
     }
 
-    fn read_charsxp(&mut self) -> Result<Sexp, RDSReaderError> {
-        let len = self.read_int()? as usize;
-        if len == usize::MAX {
-            return Ok(SexpKind::NAString.into());
+    fn read_charsxp(&mut self, arena: &'a mut Alloc) -> Result<&'a mut Sexp, RDSReaderError> {
+        let len = self.read_int()?;
+        if len == i32::MAX {
+            return Ok(arena.alloc(SexpKind::NAString.into()));
+        }
+        let len = len as usize;
+
+        let mut data = arena.alloc_slice_fill_copy(len, '\0');
+
+        for i in 0..len {
+            data[i] = self.read_byte()? as char;
         }
 
-        let mut data = vec![];
-        data.reserve(len);
-
-        for _ in 0..len {
-            data.push(self.read_byte()? as char);
-        }
-
-        Ok(SexpKind::Char(data).into())
+        Ok(arena.alloc(SexpKind::Char(data).into()))
     }
 
-    fn read_strsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_strsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let len = self.read_len()?;
-        let mut data = vec![];
-        data.reserve(len);
+        let data = arena.alloc_slice_fill_copy(len, arena.na_string);
 
-        for _ in 0..len {
-            let item = self.read_item(refs)?;
-            if let Sexp {
-                kind: SexpKind::Char(chars),
-                ..
-            } = item
-            {
-                data.push(String::from_utf8(chars.iter().map(|x| *x as u8).collect())?);
-            } else if item.kind == SexpKind::NAString {
-                // TODO ask Filip
-            } else {
+        for i in 0..len {
+            if self.read_flags()?.sexp_type != sexptype::CHARSXP {
                 return Err(RDSReaderError::DataError(
-                    "Strsxp must be created from charsxp".into(),
+                    "String must have charsxp expressions".into(),
                 ));
             }
+
+            let string = match self.read_string(arena)? {
+                Some(string) => string,
+                None => continue,
+            };
+
+            data[i] = string;
         }
 
-        Ok(SexpKind::Str(data).into())
+        Ok(arena.alloc(SexpKind::Str(data).into()))
     }
 
-    fn read_langsxp(&mut self, refs: &mut RefsTable, flag: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_langsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        flag: Flag,
+        arena: &'a mut Alloc,
+    ) -> Result<lang::Lang, RDSReaderError> {
         let attr = if flag.has_attributes {
-            Some(self.read_item(refs)?)
+            Some(self.read_item(refs, arena)?)
         } else {
             None
         };
@@ -468,67 +502,73 @@ pub trait RDSReader<'a>: Read {
         if flag.has_tag {
             todo!()
         }
-        let target = self.read_item(refs)?;
 
-        let args = self.read_item(refs)?;
-
-        let args = match args.kind {
-            SexpKind::List(list) => list,
-            SexpKind::Nil => vec![],
-            x => {
-                return Err(RDSReaderError::DataError(format!(
-                    "Args need to be list got {x:?}"
-                )))
+        let target = {
+            let flag = self.read_flags()?;
+            match flag.sexp_type {
+                sexptype::SYMSXP => lang::Target::Sym(self.read_symsxp(refs, arena)?),
+                sexptype::LANGSXP => {
+                    lang::Target::Lang(arena.alloc(self.read_langsxp(refs, flag, arena)?))
+                }
+                x => {
+                    return Err(RDSReaderError::DataError(format!(
+                        "Target needs to be either symbol or lang got {x}"
+                    )))
+                }
             }
         };
 
-        let target = match target.kind {
-            SexpKind::Sym(sym) => lang::Target::Sym(sym),
-            SexpKind::Lang(lang) => lang::Target::Lang(Box::new(lang)),
-            _ => {
-                return Err(RDSReaderError::DataError(format!(
-                    "Target needs to be either symbol or lang got {target}"
-                )))
+        let args = {
+            let flags = self.read_flags()?;
+            match flags.sexp_type {
+                sexptype::NILSXP | sexptype::NILVALUE_SXP => arena.nil_list,
+                sexptype::LISTSXP => self.read_listsxp(refs, flags, arena)?,
+                x => {
+                    return Err(RDSReaderError::DataError(format!(
+                        "Args need to be list got {x:?}"
+                    )))
+                }
             }
         };
-        let mut res: Sexp = SexpKind::Lang(lang::Lang::new(target, args)).into();
+
+        let mut res = lang::Lang::new(target, args);
         if let Some(attr) = attr {
-            res.set_attr(attr);
+            todo!();
+            //res.set_attr(attr);
         }
         Ok(res)
     }
 
-    fn read_closxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_formals(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a [lang::Formal<'a>], RDSReaderError> {
+        todo!()
+    }
+
+    fn read_closxp(
+        &mut self,
+        refs: &mut RefsTable,
+        flags: Flag,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         // order of the values : [attr], enviroment, formals, body
         let attr = if flags.has_attributes {
-            Some(self.read_item(refs)?)
+            Some(self.read_item(refs, arena)?)
             //None
         } else {
             None
         };
-        let environment = self.read_item(refs)?;
-        let formals = self.read_item(refs)?;
-        let body = self.read_item(refs)?;
-
-        let environment = match environment.kind {
-            SexpKind::Environment(environment) => environment,
-            SexpKind::Nil => lang::Environment::Empty.into(),
-            _ => unreachable!(),
+        let environment = {
+            let flag = self.read_flags()?;
+            self.read_enviroment(refs, flag, arena)?
         };
+        let formals = self.read_formals(refs, arena)?;
+        let body = self.read_item(refs, arena)?;
 
-        let mut res: Sexp = match formals.kind {
-            SexpKind::List(formals) => {
-                let formals: Result<Vec<_>, _> =
-                    formals.into_iter().map(|x| x.try_into()).collect();
-                Ok(SexpKind::Closure(lang::Closure::new(formals?, body, environment)).into())
-            }
-            SexpKind::Nil => {
-                Ok(SexpKind::Closure(lang::Closure::new(vec![], body, environment)).into())
-            }
-            formals => Err(RDSReaderError::DataError(format!(
-                "Wrong format of the closure : {environment}, {formals}"
-            ))),
-        }?;
+        let res: &mut Sexp =
+            arena.alloc(SexpKind::Closure(lang::Closure::new(formals, body, environment)).into());
 
         if let Some(attr) = attr {
             res.set_attr(attr)
@@ -537,62 +577,98 @@ pub trait RDSReader<'a>: Read {
         Ok(res)
     }
 
-    fn read_envsxp(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_enviroment(
+        &mut self,
+        refs: &mut RefsTable,
+        flags: Flag,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut lang::Environment<'a>, RDSReaderError> {
+        let res = match flags.sexp_type {
+            sexptype::ENVSXP => {
+                // here I need to get only env from Sexp that
+                // for sure contains env. This could create unecessery
+                // data in the arena however the env must be checked
+                // into the refs so it still needs to be created
+                let SexpKind::Environment(env) = &mut self.read_envsxp(refs, arena)?.kind else {
+                    unreachable!()
+                };
+                env
+            }
+            sexptype::GLOBALENV_SXP => arena.get_global(),
+            sexptype::EMPTYENV_SXP | sexptype::NILSXP | sexptype::NILVALUE_SXP => arena.get_empty(),
+            sexptype::BASEENV_SXP | sexptype::BASENAMESPACE_SXP => arena.get_base(),
+            x => {
+                return Err(RDSReaderError::DataError(format!(
+                    "Parent of environment must be an environment got {x}"
+                )))
+            }
+        };
+
+        Ok(res)
+    }
+
+    // This returs Sexp only because I need to check it in
+    // the refs table however I should always be NormalEnv
+    fn read_envsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let locked = self.read_int()?;
 
         // just register ref so my indexes are correct
         let index = refs.add_placeholder();
 
-        let parent = self.read_item(refs)?;
-        let frame = self.read_item(refs)?;
-        let hashtab = self.read_item(refs)?;
-        let attr = self.read_item(refs)?;
+        let parent = {
+            let flag = self.read_flags()?;
+            self.read_enviroment(refs, flag, arena)?
+        };
+        let frame = {
+            let flag = self.read_flags()?;
+            match flag.sexp_type {
+                sexptype::LISTSXP => self.read_listsxp(refs, flag, arena)?,
+                sexptype::NILSXP => arena.nil_list,
+                _ => return Err(RDSReaderError::DataError("List frame must be list".into())),
+            }
+        };
+        let hashtab = {
+            let flag = self.read_flags()?;
+            match flag.sexp_type {
+                sexptype::VECSXP => self.read_vecsxp(refs, arena)?,
+                sexptype::NILSXP => arena.nil_vec,
+                _ => {
+                    return Err(RDSReaderError::DataError(
+                        "Hash frame must be vector".into(),
+                    ))
+                }
+            }
+        };
+        let attr = self.read_item(refs, arena)?;
 
-        let res = match parent.kind {
-            SexpKind::Environment(env) => {
-                let env = lang::NormalEnv::new(
-                    Box::new(env),
-                    locked == 1,
-                    frame.try_into()?,
-                    hashtab.try_into()?,
-                );
-                let env: lang::Environment = env.into();
-                let env: SexpKind = env.into();
-                let mut env: Sexp = env.into();
-                env.set_attr(attr);
-                if !refs.update_ref(index, env.clone()) {
-                    return Err(RDSReaderError::DataError(format!(
-                        "Wrong ref index {index}"
-                    )));
-                }
-                Ok(env)
-            }
-            SexpKind::Nil => {
-                let env = lang::NormalEnv::new(
-                    Box::new(lang::Environment::Empty),
-                    locked == 1,
-                    frame.try_into()?,
-                    hashtab.try_into()?,
-                );
-                let env: lang::Environment = env.into();
-                let env: SexpKind = env.into();
-                let mut env: Sexp = env.into();
-                env.set_attr(attr);
-                if !refs.update_ref(index, env.clone()) {
-                    return Err(RDSReaderError::DataError(format!(
-                        "Wrong ref index {index}"
-                    )));
-                }
-                Ok(env)
-            }
-            _ => Err(RDSReaderError::DataError(format!(
-                "Parent of environment must be an environment got {parent}"
-            ))),
-        }?;
-        Ok(res)
+        let env = lang::NormalEnv::new(
+            parent,
+            locked == 1,
+            lang::ListFrame::new(frame, arena),
+            lang::HashFrame::new(hashtab, arena),
+        );
+        let env: lang::Environment = env.into();
+        let env: SexpKind = env.into();
+        let mut env: Sexp = env.into();
+        let env = arena.alloc(env);
+        env.set_attr(attr);
+        if !refs.update_ref(index, env) {
+            return Err(RDSReaderError::DataError(format!(
+                "Wrong ref index {index}"
+            )));
+        }
+        Ok(env)
     }
 
-    fn read_refsxp(&mut self, refs: &mut RefsTable, flags: Flag) -> Result<Sexp, RDSReaderError> {
+    fn read_refsxp(
+        &mut self,
+        refs: &mut RefsTable,
+        flags: Flag,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let index = flags.orig >> 8;
         let index = if index == 0 { self.read_int()? } else { index } - 1;
 
@@ -604,37 +680,47 @@ pub trait RDSReader<'a>: Read {
         )
     }
 
-    fn read_bc(&mut self, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_bc(
+        &mut self,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let reps = self.read_int()?;
+        // reps vec is not part of the
+        // rds data it is the temp value
+        // so I dont need to use arena
         let mut reps_vec = vec![];
-        reps_vec.resize(reps as usize, SexpKind::Nil.into());
-        self.read_bc_inner(refs, &mut reps_vec)
+        reps_vec.resize(reps as usize, arena.nil as &'a Sexp);
+        self.read_bc_inner(refs, &mut reps_vec, arena)
     }
 
     fn read_bc_inner(
         &mut self,
         refs: &mut RefsTable,
-        reps: &mut Vec<Sexp>,
-    ) -> Result<Sexp, RDSReaderError> {
-        let code = self.read_item(refs)?;
-        let consts = self.read_bcconsts(refs, reps)?;
-        match code.kind {
-            SexpKind::Int(ints) => {
-                let bc = Bc::new_init(ints, consts);
-                Ok(SexpKind::Bc(bc).into())
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
+        let code = {
+            let flag = self.read_flags()?;
+            match flag.sexp_type {
+                sexptype::INTSXP => self.read_ints(arena)?,
+                _ => todo!(),
             }
-            _ => todo!(),
-        }
+        };
+        let consts = self.read_bcconsts(refs, reps, arena)?;
+        let bc = Bc::new(code, consts);
+        Ok(arena.alloc(SexpKind::Bc(bc).into()))
     }
 
     fn read_bcconsts(
         &mut self,
         refs: &mut RefsTable,
-        reps: &mut Vec<Sexp>,
-    ) -> Result<Vec<Sexp>, RDSReaderError> {
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a [&'a Sexp], RDSReaderError> {
         let n = self.read_int()?;
-        let mut res = vec![];
-        for _ in 0..n {
+        let mut res = arena.alloc_slice_fill_copy(n as usize, arena.nil as &'a Sexp);
+        for i in 0..n {
             let type_val = self.read_int()?;
             if type_val > 0xff || type_val < 0 {
                 return Err(RDSReaderError::DataError(
@@ -643,16 +729,16 @@ pub trait RDSReader<'a>: Read {
             }
             let type_val = type_val as u8;
             let tmp = match type_val {
-                sexptype::BCODESXP => self.read_bc_inner(refs, reps)?,
+                sexptype::BCODESXP => self.read_bc_inner(refs, reps, arena)?,
                 sexptype::LANGSXP
                 | sexptype::LISTSXP
                 | sexptype::BCREPDEF
                 | sexptype::BCREPREF
                 | sexptype::ATTRLANGSXP
-                | sexptype::ATTRLISTSXP => self.read_bclang(type_val, refs, reps)?,
-                _ => self.read_item(refs)?,
+                | sexptype::ATTRLISTSXP => self.read_bclang(type_val, refs, reps, arena)?,
+                _ => self.read_item(refs, arena)?,
             };
-            res.push(tmp)
+            res[i as usize] = tmp;
         }
         Ok(res)
     }
@@ -661,47 +747,51 @@ pub trait RDSReader<'a>: Read {
         &mut self,
         type_val: u8,
         refs: &mut RefsTable,
-        reps: &mut Vec<Sexp>,
-    ) -> Result<Sexp, RDSReaderError> {
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a Sexp, RDSReaderError> {
         match type_val {
-            sexptype::BCREPREF => Ok(reps[self.read_int()? as usize].clone()),
+            sexptype::BCREPREF => Ok(reps[self.read_int()? as usize]),
             sexptype::BCREPDEF => {
                 let pos = self.read_int()?;
                 let type_val = self.read_int()?;
-                let res = self.read_bclang_inner(type_val as u8, refs, reps)?;
+                let res = self.read_bclang_inner(type_val as u8, refs, reps, arena)?;
 
                 if pos >= 0 {
-                    reps[pos as usize] = res.clone();
+                    reps[pos as usize] = res;
                 }
 
                 Ok(res)
             }
             sexptype::LANGSXP
-            | sexptype::LISTSXP
             | sexptype::ATTRLANGSXP
-            | sexptype::ATTRLISTSXP => self.read_bclang_inner(type_val, refs, reps),
-            _ => self.read_item(refs),
+            | sexptype::LISTSXP
+            | sexptype::ATTRLISTSXP => self.read_bclang_inner(type_val, refs, reps, arena),
+            _ => self.read_item(refs, arena).map(|x| x as &'a Sexp),
         }
     }
 
-    fn read_bclang_inner(
+    fn read_bclang_langsxp(
         &mut self,
         type_val: u8,
         refs: &mut RefsTable,
-        reps: &mut Vec<Sexp>,
-    ) -> Result<Sexp, RDSReaderError> {
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a Sexp, RDSReaderError> {
         let (type_orig, has_attr) = match type_val {
             sexptype::ATTRLANGSXP => (sexptype::LANGSXP, true),
-            sexptype::ATTRLISTSXP => (sexptype::LISTSXP, true),
-            _ => (type_val, false),
+            sexptype::LANGSXP => (type_val, false),
+            // here should be panic since this is only for
+            // this and should not be called otherwise
+            _ => panic!("Unexpected type_orig in read_bclang_langsxp"),
         };
 
         let attr = if has_attr {
-            Some(self.read_item(refs)?)
+            Some(self.read_item(refs, arena)?)
         } else {
             None
         };
-        let tag = self.read_item(refs)?;
+        let tag = self.read_item(refs, arena)?;
 
         let tag = match tag.kind {
             SexpKind::Sym(sym) => Ok(Some(sym.data)),
@@ -710,48 +800,104 @@ pub trait RDSReader<'a>: Read {
         }?;
 
         let type_val = self.read_int()? as u8;
-        let car = self.read_bclang(type_val, refs, reps)?;
+        let car = self.read_bclang(type_val, refs, reps, arena)?;
 
         let type_val = self.read_int()? as u8;
-        let cdr = self.read_bclang(type_val, refs, reps)?;
-
-        let car: data::TaggedSexp = if let Some(tag) = tag {
-            data::TaggedSexp::new_with_tag(car, tag)
-        } else {
-            car.into()
-        };
+        let cdr = self.read_bclang(type_val, refs, reps, arena)?;
 
         let mut cdr = match cdr.kind {
-            SexpKind::Nil => Ok(vec![]),
+            SexpKind::Nil => Ok(arena.nil_list),
             SexpKind::List(cdr) => Ok(cdr),
             _ => Err(RDSReaderError::DataError(format!(
                 "Wrong cdr type in bc lang read {type_val}"
             ))),
         }?;
 
-        match type_orig {
-            sexptype::LANGSXP => {
-                let target: lang::Target = match car.data.kind {
-                    SexpKind::Sym(sym) => Ok(sym.into()),
-                    SexpKind::Lang(lang) => Ok(lang.into()),
-                    _ => Err(RDSReaderError::DataError("Wrong lang target".into())),
-                }?;
+        let target: lang::Target = match &car.kind {
+            SexpKind::Sym(sym) => Ok(lang::Target::Sym(*sym)),
+            SexpKind::Lang(lang) => Ok(lang::Target::Lang(lang)),
+            _ => Err(RDSReaderError::DataError("Wrong lang target".into())),
+        }?;
 
-                Ok(lang::Lang::new(target, cdr).into())
+        Ok(arena.alloc(SexpKind::Lang(lang::Lang::new(target, cdr)).into()))
+    }
+
+    fn read_bclang_list(
+        &mut self,
+        type_val: u8,
+        refs: &mut RefsTable,
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a Sexp, RDSReaderError> {
+        let mut res = vec![];
+        loop {
+            let (type_orig, has_attr) = match type_val {
+                sexptype::ATTRLISTSXP => (sexptype::LISTSXP, true),
+                sexptype::LISTSXP => (type_val, false),
+                // same as in the previous function
+                // basicaly if this happens it is my fuckup
+                _ => panic!("Unexpected type_orig in read_bclang_list"),
+            };
+
+            let attr = if has_attr {
+                Some(self.read_item(refs, arena)?)
+            } else {
+                None
+            };
+            let tag = self.read_item(refs, arena)?;
+
+            let tag = match tag.kind {
+                SexpKind::Sym(sym) => Ok(Some(sym.data)),
+                SexpKind::Nil => Ok(None),
+                _ => Err(RDSReaderError::DataError("Tag must be sym".into())),
+            }?;
+
+            let type_val = self.read_int()? as u8;
+            let car = self.read_bclang(type_val, refs, reps, arena)?;
+            let car: data::TaggedSexp = if let Some(tag) = tag {
+                data::TaggedSexp::new_with_tag(car, tag)
+            } else {
+                data::TaggedSexp::new(car)
+            };
+
+            let type_val = self.read_int()? as u8;
+            if type_val == sexptype::NILSXP || type_val == sexptype::NILVALUE_SXP {
+                break;
             }
-            sexptype::LISTSXP => {
-                cdr.insert(0, car);
-                Ok(SexpKind::List(cdr).into())
+            assert!(type_val == sexptype::LISTSXP || type_val == sexptype::ATTRLISTSXP);
+
+            res.push(car);
+        }
+        let data = arena.alloc_slice_clone(res.as_slice());
+        Ok(arena.alloc(SexpKind::List(data::List { data }).into()))
+    }
+
+    fn read_bclang_inner(
+        &mut self,
+        type_val: u8,
+        refs: &mut RefsTable,
+        reps: &mut Vec<&'a Sexp>,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a Sexp, RDSReaderError> {
+        match type_val {
+            sexptype::LANGSXP | sexptype::ATTRLANGSXP => {
+                self.read_bclang_langsxp(type_val, refs, reps, arena)
             }
-            _ => Err(RDSReaderError::DataError(format!(
-                "Wrong sexp type in bc lang read {type_val}"
-            ))),
+            sexptype::LISTSXP | sexptype::ATTRLISTSXP => {
+                self.read_bclang_inner(type_val, refs, reps, arena)
+            }
+            _ => panic!("Expected either lang or list"),
         }
     }
 
-    fn read_promsxp(&mut self, flags: Flag, refs: &mut RefsTable) -> Result<Sexp, RDSReaderError> {
+    fn read_promsxp(
+        &mut self,
+        flags: Flag,
+        refs: &mut RefsTable,
+        arena: &'a mut Alloc,
+    ) -> Result<&'a mut Sexp, RDSReaderError> {
         let attr = if flags.has_attributes {
-            Some(self.read_item(refs)?)
+            Some(self.read_item(refs, arena)?)
         } else {
             None
         };
@@ -767,7 +913,7 @@ pub trait RDSReader<'a>: Read {
             ) {
                 return Err(RDSReaderError::DataError("Expected environment".into()));
             }
-            let super::SexpKind::Environment(env) = self.read_envsxp(refs)?.kind else {
+            let super::SexpKind::Environment(env) = self.read_envsxp(refs, arena)?.kind else {
                 unreachable!()
             };
             env
@@ -775,15 +921,15 @@ pub trait RDSReader<'a>: Read {
             lang::Environment::Empty
         };
 
-        let value = self.read_item(refs)?;
-        let expr = self.read_item(refs)?;
+        let value = self.read_item(refs, arena)?;
+        let expr = self.read_item(refs, arena)?;
         let result = SexpKind::Promise {
             environment,
-            value: Box::new(value),
-            expr: Box::new(expr),
+            value,
+            expr,
         };
-        Ok(result.into())
+        Ok(arena.alloc(result.into()))
     }
 }
 
-impl<T> RDSReader for BufReader<T> where T: Sized + std::io::Read {}
+impl<T> RDSReader<'_> for BufReader<T> where T: Sized + std::io::Read {}

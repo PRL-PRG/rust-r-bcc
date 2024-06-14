@@ -63,7 +63,7 @@ impl<'a> RefsTable<'a> {
         (self.data.len() - 1) as i32
     }
 
-    fn find(&mut self, data: &'a mut Sexp) -> Option<i32> {
+    fn find(&mut self, data: &'a Sexp) -> Option<i32> {
         if let Some(idx) = self
             .data
             .into_iter()
@@ -176,8 +176,8 @@ mod string_format {
     pub const ASCII: i32 = 1 << 6;
 }
 
-impl From<&Sexp<'_>> for Flag {
-    fn from(value: &Sexp) -> Self {
+impl From<&mut Sexp<'_>> for Flag {
+    fn from(value: &mut Sexp) -> Self {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,
             SexpKind::List(_) => sexptype::LISTSXP,

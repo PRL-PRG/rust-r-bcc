@@ -1,26 +1,19 @@
 use super::sexp::{Sexp, SexpKind};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Bc {
-    pub instructions: Vec<i32>,
-    pub constpool: Vec<Sexp>,
+pub struct Bc<'a> {
+    pub instructions: &'a [i32],
+    pub constpool: &'a [&'a Sexp<'a>],
 }
 
-impl Into<Sexp> for Bc {
-    fn into(self) -> Sexp {
+impl<'a> Into<Sexp<'a>> for Bc<'a> {
+    fn into(self) -> Sexp<'a> {
         SexpKind::Bc(self).into()
     }
 }
 
-impl Bc {
-    pub fn new() -> Self {
-        Self {
-            instructions: vec![Bc::version()],
-            constpool: vec![],
-        }
-    }
-
-    pub fn new_init(instructions: Vec<i32>, constpool: Vec<Sexp>) -> Self {
+impl<'a> Bc<'a> {
+    pub fn new(instructions: &'a [i32], constpool: &'a [&'a Sexp<'a>]) -> Self {
         Self {
             instructions,
             constpool,

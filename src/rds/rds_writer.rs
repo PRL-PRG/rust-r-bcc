@@ -2,7 +2,7 @@ use std::io::{BufWriter, Write};
 
 use crate::sexp::{
     bc::Bc,
-    sexp::{data, lang, MetaData, Sexp, SexpKind},
+    sexp::{data, lang, MetaData, Sexp, SexpKind}, sexp_alloc::Alloc,
 };
 
 use super::{sexptype, Flag, RDSHeader, RefsTable};
@@ -21,7 +21,7 @@ impl From<std::io::Error> for RDSWriterError {
 
 type Ret = Result<(), RDSWriterError>;
 
-pub trait RDSWriter: Write {
+pub trait RDSWriter<'a>: Write {
     fn write_byte(&mut self, byte: u8) -> Ret {
         let len = self.write(&[byte])?;
         if len != 1 {
@@ -99,7 +99,7 @@ pub trait RDSWriter: Write {
         }
     }
 
-    fn write_intvec(&mut self, ints: &Vec<i32>) -> Ret {
+    fn write_intvec(&mut self, ints: &[i32]) -> Ret {
         self.write_len(ints.len())?;
 
         for val in ints {
@@ -108,13 +108,13 @@ pub trait RDSWriter: Write {
         Ok(())
     }
 
-    fn write_rds(&mut self, header: RDSHeader, sexp: Sexp) -> Ret {
+    fn write_rds(&mut self, header: RDSHeader, sexp: &'a mut Sexp<'a>, arena : &'a mut Alloc) -> Ret {
         self.write_header(header)?;
-        self.write_item(&sexp, &mut RefsTable::default())?;
+        self.write_item(sexp, &mut RefsTable::new(arena))?;
         Ok(())
     }
 
-    fn write_item(&mut self, sexp: &Sexp, refs: &mut RefsTable) -> Ret {
+    fn write_item(&mut self, sexp: &'a mut Sexp<'a>, refs: &mut RefsTable) -> Ret {
         // when creating refs there are different rules for creating
         // flags so it must be done seperatelly
         if let Some(idx) = refs.find(sexp) {
@@ -133,7 +133,7 @@ pub trait RDSWriter: Write {
                 self.write_int(
                     super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                 )?;
-                self.write_charsxp(sym.data.as_str())
+                self.write_charsxp(sym.data)
             }
             SexpKind::List(taggedlist) => {
                 self.write_listsxp(taggedlist, &sexp.metadata, flag, refs)
@@ -156,7 +156,7 @@ pub trait RDSWriter: Write {
                 // lenght of the char vector is limited
                 self.write_int(chars.len() as i32)?;
 
-                for val in chars {
+                for val in chars.iter() {
                     self.write_byte(*val as u8)?;
                 }
 
@@ -165,7 +165,7 @@ pub trait RDSWriter: Write {
             SexpKind::Logic(logics) => {
                 self.write_len(logics.len())?;
 
-                for val in logics {
+                for val in logics.iter() {
                     self.write_int(val.into())?;
                 }
                 Ok(())
@@ -173,7 +173,7 @@ pub trait RDSWriter: Write {
             SexpKind::Real(reals) => {
                 self.write_len(reals.len())?;
 
-                for val in reals {
+                for val in reals.iter() {
                     self.write_double(*val)?;
                 }
                 Ok(())
@@ -182,7 +182,7 @@ pub trait RDSWriter: Write {
             SexpKind::Complex(complexes) => {
                 self.write_len(complexes.len())?;
 
-                for val in complexes {
+                for val in complexes.iter() {
                     self.write_double(val.real)?;
                     self.write_double(val.imaginary)?;
                 }
@@ -190,11 +190,11 @@ pub trait RDSWriter: Write {
             }
             SexpKind::Str(strs) => {
                 self.write_len(strs.len())?;
-                for s in strs {
+                for s in strs.iter() {
                     self.write_int(
                         super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                     )?;
-                    self.write_charsxp(s.as_str())?;
+                    self.write_charsxp(s)?;
                 }
                 Ok(())
             }
@@ -205,7 +205,7 @@ pub trait RDSWriter: Write {
                 self.write_int(
                     super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
                 )?;
-                self.write_charsxp(sym.data.as_str())
+                self.write_charsxp(sym.data)
             }
             SexpKind::NAString => self.write_int(-1),
         }?;
@@ -454,7 +454,7 @@ pub trait RDSWriter: Write {
         self.write_int(sexptype::NILVALUE_SXP as i32)
     }
 
-    fn write_vecsxp(&mut self, items: &Vec<Sexp>, refs: &mut RefsTable) -> Ret {
+    fn write_vecsxp(&mut self, items: &'a [Sexp<'a>], refs: &mut RefsTable) -> Ret {
         self.write_len(items.len())?;
 
         for item in items {

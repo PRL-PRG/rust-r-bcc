@@ -61,36 +61,30 @@ pub mod data {
 
     use super::{Sexp, SexpKind};
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct TaggedSexp<'a> {
         pub tag: Option<&'a str>,
-        pub data: Sexp<'a>,
+        pub data: &'a Sexp<'a>,
     }
 
-    impl TaggedSexp<'_> {
-        pub fn new(data: Sexp) -> Self {
+    impl<'a> TaggedSexp<'a> {
+        pub fn new(data: &'a Sexp) -> Self {
             Self { tag: None, data }
         }
 
-        pub fn new_with_tag<'a>(data: Sexp, tag: &'a str) -> Self {
+        pub fn new_with_tag(data: &'a Sexp, tag: &'a str) -> Self {
             let tag = Some(tag);
             Self { tag, data }
         }
     }
 
-    impl<'a> From<Sexp<'a>> for TaggedSexp<'a> {
-        fn from(value: Sexp) -> Self {
+    impl<'a> From<&'a mut Sexp<'a>> for TaggedSexp<'a> {
+        fn from(value: &'a mut Sexp<'a>) -> Self {
             Self::new(value)
         }
     }
 
-    impl<'a> From<SexpKind<'a>> for TaggedSexp<'a> {
-        fn from(value: SexpKind) -> Self {
-            Self::new(value.into())
-        }
-    }
-
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Default)]
     pub struct Complex {
         pub real: f64,
         pub imaginary: f64,
@@ -98,7 +92,7 @@ pub mod data {
 
     #[derive(PartialEq)]
     pub struct List<'a> {
-        data: &'a [TaggedSexp<'a>],
+        pub data: &'a [TaggedSexp<'a>],
     }
 
     impl std::fmt::Debug for List<'_> {
@@ -150,6 +144,8 @@ pub mod data {
 pub mod lang {
     use std::{collections::HashMap, rc::Rc};
 
+    use crate::sexp::sexp_alloc::Alloc;
+
     #[derive(Debug, PartialEq)]
     pub struct Sym<'a> {
         pub(crate) data: &'a str,
@@ -169,8 +165,8 @@ pub mod lang {
 
     #[derive(Debug, PartialEq)]
     pub enum Target<'a> {
-        Lang(&'a mut Lang<'a>), // expression
-        Sym(Sym<'a>),           // named
+        Lang(&'a Lang<'a>), // expression
+        Sym(Sym<'a>),       // named
     }
 
     impl<'a> From<Sym<'a>> for Target<'a> {
@@ -209,35 +205,22 @@ pub mod lang {
         }
     }
 
-    impl<'a> TryInto<Formal<'a>> for super::data::TaggedSexp<'a> {
-        type Error = crate::rds::rds_reader::RDSReaderError;
-
-        fn try_into(self) -> Result<Formal<'a>, Self::Error> {
-            match self.tag {
-                Some(name) => Ok(Formal::new(Sym::new(name), self.data)),
-                None => Err(crate::rds::rds_reader::RDSReaderError::DataError(
-                    "Formal must have name as a tag".to_string(),
-                )),
-            }
-        }
-    }
-
     #[derive(Debug, PartialEq)]
     pub struct Closure<'a> {
         pub(crate) formals: &'a [Formal<'a>],
-        pub(crate) body: Box<super::Sexp<'a>>,
-        pub(crate) environment: Environment<'a>,
+        pub(crate) body: &'a mut super::Sexp<'a>,
+        pub(crate) environment: &'a mut Environment<'a>,
     }
 
     impl<'a> Closure<'a> {
         pub fn new(
             formals: &'a [Formal<'a>],
-            body: super::Sexp<'a>,
-            environment: Environment,
+            body: &'a mut super::Sexp<'a>,
+            environment: &'a mut Environment<'a>,
         ) -> Self {
             Self {
                 formals,
-                body: Box::new(body),
+                body,
                 environment,
             }
         }
@@ -255,7 +238,7 @@ pub mod lang {
         Base,
         Empty,
         Normal(NormalEnv<'a>),
-        Namespace(Vec<super::Sexp<'a>>),
+        Namespace(&'a mut [&'a super::Sexp<'a>]),
     }
 
     impl<'a> Environment<'a> {
@@ -314,10 +297,11 @@ pub mod lang {
         }
     }
 
-    #[derive(PartialEq, Default)]
+    #[derive(PartialEq)]
     pub struct ListFrame<'a> {
         pub data: Option<super::data::List<'a>>,
-        pub env: HashMap<&'a str, usize>,
+        // this is boxed to allow droping this with the arena death
+        pub env: bumpalo::boxed::Box<'a, HashMap<&'a str, usize>>,
     }
 
     impl std::fmt::Debug for ListFrame<'_> {
@@ -326,9 +310,9 @@ pub mod lang {
         }
     }
 
-    impl ListFrame<'_> {
-        pub fn new(data: super::data::List) -> Self {
-            let mut env = HashMap::default();
+    impl<'a> ListFrame<'a> {
+        pub fn new(data: super::data::List, arena: &'a mut Alloc<'a>) -> Self {
+            let mut env = bumpalo::boxed::Box::new_in(HashMap::default(), arena);
             for (index, item) in data.iter().enumerate() {
                 let Some(name) = item.tag.clone() else {
                     println!("{item}");
@@ -351,10 +335,11 @@ pub mod lang {
         }
     }
 
-    #[derive(PartialEq, Default)]
+    #[derive(PartialEq)]
     pub struct HashFrame<'a> {
-        pub data: Option<Vec<super::Sexp<'a>>>,
-        pub env: HashMap<&'a str, (usize, usize)>,
+        pub data: Option<&'a [&'a super::Sexp<'a>]>,
+        // this is boxed to allow droping this with the arena death
+        pub env: bumpalo::boxed::Box<'a, HashMap<&'a str, (usize, usize)>>,
     }
 
     impl std::fmt::Debug for HashFrame<'_> {
@@ -363,9 +348,9 @@ pub mod lang {
         }
     }
 
-    impl HashFrame<'_> {
-        pub fn new(data: Vec<super::Sexp>) -> Self {
-            let mut env = HashMap::new();
+    impl<'a> HashFrame<'a> {
+        pub fn new(data: &'a [&'a super::Sexp], arena: &'a mut Alloc) -> Self {
+            let mut env = bumpalo::boxed::Box::new_in(HashMap::new(), arena);
 
             for (block, item) in data.iter().enumerate() {
                 match &item.kind {
@@ -425,7 +410,7 @@ pub enum SexpKind<'a> {
         value: &'a mut Sexp<'a>,
     },
     Lang(lang::Lang<'a>),
-    Bc(Bc),
+    Bc(Bc<'a>),
     Buildin(lang::Sym<'a>),
 
     // vecs
@@ -435,8 +420,8 @@ pub enum SexpKind<'a> {
     Real(&'a [f64]),
     Int(&'a [i32]),
     Complex(&'a [data::Complex]),
-    Str(&'a [String]),
-    Vec(&'a [Sexp<'a>]),
+    Str(&'a [&'a str]),
+    Vec(&'a [&'a Sexp<'a>]),
 
     MissingArg,
 
