@@ -18,9 +18,9 @@ struct Label {
     positions: Vec<usize>,
 }
 
-pub struct CodeBuffer {
-    pub bc: Bc,
-    pub current_expr: Option<Sexp>,
+pub struct CodeBuffer<'a> {
+    pub bc: Bc<'a>,
+    pub current_expr: Option<&'a Sexp<'a>>,
     pub expression_buffer: Vec<i32>,
     labels: Vec<Label>,
 }

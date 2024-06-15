@@ -1,9 +1,11 @@
 use std::{collections::HashSet, env, fs::File, time::Instant};
 
+use bumpalo::Bump;
 use rds::{
     rds_reader::{RDSReader, RDSReaderError},
     rds_writer::{RDSWriter, RDSWriterError},
 };
+use sexp::sexp_alloc::Alloc;
 
 use crate::{
     compiler::compiler::Compiler,
@@ -181,7 +183,9 @@ fn main() -> Result<(), MainError> {
         return Err(MainError::WrongArgs);
     }
     let mut file = File::open(args[1].as_str())?;
-    let RDSResult { header, data: sexp } = file.read_rds()?;
+    let mut alloc = Bump::new();
+    let mut alloc = Alloc::new(&mut alloc);
+    let RDSResult { header, data: sexp } = file.read_rds(&mut alloc)?;
 
     let compile = args[2] == "-c";
 
@@ -196,7 +200,7 @@ fn main() -> Result<(), MainError> {
             let bc: Sexp = bc.into();
 
             let mut outfile = File::create("temp/compout.dat")?;
-            outfile.write_rds(header, bc.into())?;
+            outfile.write_rds(header, bc, &mut alloc)?;
         }
         _ => {
             //let mut outfile = File::create("temp/outfile.dat")?;

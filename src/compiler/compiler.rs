@@ -3,6 +3,7 @@ use std::{collections::HashSet, rc::Rc};
 use crate::sexp::{
     bc::{Bc, BcOp},
     sexp::{data, lang, MetaData, Sexp, SexpKind},
+    sexp_alloc::Alloc,
 };
 
 use super::{
@@ -21,17 +22,17 @@ struct InlineInfo {
     base_var: bool,
 }
 
-pub struct Compiler {
+pub struct Compiler<'a> {
     options: CompilerOptions,
     context: CompilerContext,
     code_buffer: CodeBuffer,
 
     pub warnings: Vec<Warning>,
 
-    env: lang::Environment,
+    env: &'a lang::Environment<'a>,
     localenv: HashSet<String>,
-    baseenv: Option<Rc<lang::NormalEnv>>,
-    namespacebase: Option<Rc<lang::NormalEnv>>,
+    baseenv: Option<&'a lang::NormalEnv<'a>>,
+    namespacebase: Option<&'a lang::NormalEnv<'a>>,
 
     pub specials: HashSet<String>,
     pub builtins: HashSet<String>,
@@ -51,14 +52,14 @@ const MATH1_FUNCS: [&str; 24] = [
     "cospi", "sinpi", "tanpi",
 ];
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(arena: &'a mut Alloc<'a>) -> Self {
         Self {
             options: CompilerOptions::default(),
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            env: lang::Environment::Global,
+            env: arena.nil,
             localenv: HashSet::new(),
             baseenv: None,
             namespacebase: None,
@@ -90,45 +91,47 @@ impl Compiler {
         }
     }
 
-    pub fn set_baseenv(&mut self, env: Rc<lang::NormalEnv>) {
+    pub fn set_baseenv(&mut self, env: &'a lang::NormalEnv<'a>) {
         self.baseenv = Some(env);
     }
 
-    pub fn set_namespacebase(&mut self, env: Rc<lang::NormalEnv>) {
+    pub fn set_namespacebase(&mut self, env: &'a lang::NormalEnv<'a>) {
         self.namespacebase = Some(env);
     }
 
-    pub fn cmpfun(&mut self, closure: lang::Closure) -> lang::Closure {
+    pub fn cmpfun(
+        &mut self,
+        closure: &'a lang::Closure,
+        arena: &'a mut Alloc<'a>,
+    ) -> &'a lang::Closure {
         let mut closure = closure;
-        self.env = lang::NormalEnv::new(
-            Box::new(closure.environment.clone()),
+        let data: Vec<data::TaggedSexp> = closure
+            .formals
+            .iter()
+            .map(|x| data::TaggedSexp::new_with_tag(x.value, &x.name))
+            .collect();
+        let tmp = data::List {
+            data: arena.alloc_slice_clone(data.as_slice()),
+        };
+        let env = arena.alloc(lang::NormalEnv::new(
+            closure.environment,
             false,
-            lang::ListFrame::new(
-                closure
-                    .formals
-                    .iter()
-                    .map(|x| {
-                        data::TaggedSexp::new_with_tag(
-                            x.value.as_ref().clone(),
-                            x.name.data.clone(),
-                        )
-                    })
-                    .collect(),
-            ),
-            lang::HashFrame::new(vec![]),
-        )
-        .into();
+            lang::ListFrame::new(tmp, arena),
+            lang::HashFrame::new(arena.nil_vec, arena),
+        ));
+        let env = arena.alloc(lang::Environment::Normal(env));
+        self.env = env;
         if self.options.inline_level > 0 {
             self.localenv = HashSet::new();
             self.find_locals(&closure.body);
         }
         let body =
-            SexpKind::Bc(self.gen_code(closure.body.as_ref(), Some(closure.body.as_ref()))).into();
-        closure.body = Box::new(body);
+            arena.alloc(SexpKind::Bc(self.gen_code(closure.body, Some(closure.body))).into());
+        closure.body = body;
         closure
     }
 
-    fn gen_code(&mut self, target: &Sexp, loc: Option<&Sexp>) -> Bc {
+    fn gen_code(&mut self, target: &'a Sexp<'a>, loc: Option<&'a Sexp<'a>>) -> Bc {
         let tmp = if let Some(loc) = loc {
             CodeBuffer::new_with_expr(loc.clone())
         } else {
@@ -1063,9 +1066,9 @@ impl Compiler {
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
             "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
-            | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function" | "local"
-            | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!"
-            | "&&" | "||" | "$" => true,
+            | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function"
+            | "local" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|"
+            | "!" | "&&" | "||" | "$" => true,
 
             "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
             | "is.name" | "is.null" | "is.object" | "is.symbol" => true,

@@ -29,21 +29,21 @@ pub struct RDSHeader {
 
 pub struct RDSResult<'a> {
     pub header: RDSHeader,
-    pub data: &'a mut Sexp<'a>,
+    pub data: &'a Sexp<'a>,
 }
 
 impl<'a> RDSResult<'a> {
-    pub fn new(header: RDSHeader, data: &'a mut Sexp) -> Self {
+    pub fn new(header: RDSHeader, data: &'a Sexp) -> Self {
         Self { header, data }
     }
 }
 
-pub struct RefsTable<'a> {
-    data: Vec<&'a mut Sexp<'a>>,
-    placeholder: &'a mut Sexp<'a>,
+pub struct RefsTableReader<'a> {
+    data: Vec<&'a Sexp<'a>>,
+    placeholder: &'a Sexp<'a>,
 }
 
-impl<'a> RefsTable<'a> {
+impl<'a> RefsTableReader<'a> {
     fn new(arena: &'a mut Bump) -> Self {
         Self {
             data: vec![],
@@ -51,7 +51,7 @@ impl<'a> RefsTable<'a> {
         }
     }
 
-    fn add_ref(&mut self, data: &'a mut Sexp) -> i32 {
+    fn add_ref(&mut self, data: &'a Sexp) -> i32 {
         if let Some(idx) = self
             .data
             .into_iter()
@@ -75,7 +75,7 @@ impl<'a> RefsTable<'a> {
         }
     }
 
-    fn get_ref(&mut self, index: i32) -> Option<&'a mut Sexp> {
+    fn get_ref(&mut self, index: i32) -> Option<&'a Sexp> {
         if index < 0 || index > self.data.len() as i32 {
             None
         } else {
@@ -88,12 +88,89 @@ impl<'a> RefsTable<'a> {
         (self.data.len() - 1) as i32
     }
 
-    fn update_ref(&mut self, index: i32, data: &'a mut Sexp) -> bool {
+    fn update_ref(&mut self, index: i32, data: &'a Sexp) -> bool {
         if index < 0 || index > self.data.len() as i32 {
             false
         } else {
             self.data[index as usize] = data;
             true
+        }
+    }
+}
+
+enum RefWriter<'a> {
+    Sym(&'a lang::Sym<'a>),
+    NormalEnv(&'a lang::NormalEnv<'a>),
+}
+
+pub struct RefsTableWriter<'a> {
+    data: Vec<RefWriter<'a>>,
+}
+
+impl<'a> RefsTableWriter<'a> {
+    fn new(arena: &'a mut Bump) -> Self {
+        Self {
+            data: vec![],
+        }
+    }
+
+    fn add_ref(&mut self, data: &'a Sexp<'a>) -> i32 {
+        match &data.kind {
+            SexpKind::Sym(sym) => self.add_sym(sym),
+            SexpKind::Environment(lang::Environment::Normal(env)) => self.add_normal_env(env),
+            _ => panic!(),
+        }
+    }
+
+    fn add_sym(&mut self, sym: &'a lang::Sym<'a>) -> i32 {
+        if let Some(idx) = self.data.into_iter().position(|x| match x {
+            RefWriter::Sym(x) => std::ptr::eq(x, sym) || x == sym,
+            RefWriter::NormalEnv(_) => false,
+        }) {
+            return idx as i32;
+        }
+        self.data.push(RefWriter::Sym(sym));
+        (self.data.len() - 1) as i32
+    }
+
+    fn add_normal_env(&mut self, env: &'a lang::NormalEnv<'a>) -> i32 {
+        if let Some(idx) = self.data.into_iter().position(|x| match x {
+            RefWriter::NormalEnv(x) => std::ptr::eq(x, env) || x == env,
+            RefWriter::Sym(_) => false,
+        }) {
+            return idx as i32;
+        }
+        self.data.push(RefWriter::NormalEnv(env));
+        (self.data.len() - 1) as i32
+    }
+
+    fn find(&mut self, data: &'a Sexp) -> Option<i32> {
+        match &data.kind {
+            SexpKind::Sym(sym) => self.find_sym(sym),
+            SexpKind::Environment(lang::Environment::Normal(env)) => self.find_normal_env(env),
+            _ => None,
+        }
+    }
+
+    fn find_sym(&mut self, sym: &'a lang::Sym<'a>) -> Option<i32> {
+        if let Some(idx) = self.data.into_iter().position(|x| match x {
+            RefWriter::Sym(x) => std::ptr::eq(x, sym) || x == sym,
+            RefWriter::NormalEnv(_) => false,
+        }) {
+            Some(idx as i32)
+        } else {
+            None
+        }
+    }
+
+    fn find_normal_env(&mut self, env: &'a lang::NormalEnv<'a>) -> Option<i32> {
+        if let Some(idx) = self.data.into_iter().position(|x| match x {
+            RefWriter::NormalEnv(x) => std::ptr::eq(x, env) || x == env,
+            RefWriter::Sym(_) => false,
+        }) {
+            Some(idx as i32)
+        } else {
+            None
         }
     }
 }
@@ -176,8 +253,8 @@ mod string_format {
     pub const ASCII: i32 = 1 << 6;
 }
 
-impl From<&mut Sexp<'_>> for Flag {
-    fn from(value: &mut Sexp) -> Self {
+impl From<&Sexp<'_>> for Flag {
+    fn from(value: &Sexp) -> Self {
         let sexp_type = match value.kind {
             SexpKind::Sym(_) => sexptype::SYMSXP,
             SexpKind::List(_) => sexptype::LISTSXP,

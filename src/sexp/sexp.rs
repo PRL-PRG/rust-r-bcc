@@ -7,7 +7,7 @@ pub struct Loc {
 
 #[derive(Debug, PartialEq, Default)]
 pub struct MetaData<'a> {
-    pub attr: Option<&'a mut Sexp<'a>>,
+    pub attr: Option<&'a Sexp<'a>>,
 }
 
 impl MetaData<'_> {
@@ -21,7 +21,7 @@ impl MetaData<'_> {
             {
                 list.into_iter().any(|x| {
                     let x = match x.tag {
-                        Some(x) if x == "class" => true,
+                        Some(x) if x.data == "class" => true,
                         _ => false,
                     };
                     x
@@ -51,7 +51,7 @@ impl<'a> From<SexpKind<'a>> for Sexp<'a> {
 }
 
 impl Sexp<'_> {
-    pub fn set_attr(&mut self, attr: &mut Sexp) {
+    pub fn set_attr(&mut self, attr: &Sexp) {
         self.metadata.attr = Some(attr);
     }
 }
@@ -63,7 +63,7 @@ pub mod data {
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct TaggedSexp<'a> {
-        pub tag: Option<&'a str>,
+        pub tag: Option<&'a super::lang::Sym<'a>>,
         pub data: &'a Sexp<'a>,
     }
 
@@ -72,14 +72,14 @@ pub mod data {
             Self { tag: None, data }
         }
 
-        pub fn new_with_tag(data: &'a Sexp, tag: &'a str) -> Self {
+        pub fn new_with_tag(data: &'a Sexp, tag: &'a super::lang::Sym<'a>) -> Self {
             let tag = Some(tag);
             Self { tag, data }
         }
     }
 
-    impl<'a> From<&'a mut Sexp<'a>> for TaggedSexp<'a> {
-        fn from(value: &'a mut Sexp<'a>) -> Self {
+    impl<'a> From<&'a Sexp<'a>> for TaggedSexp<'a> {
+        fn from(value: &'a Sexp<'a>) -> Self {
             Self::new(value)
         }
     }
@@ -142,11 +142,11 @@ pub mod data {
 }
 
 pub mod lang {
-    use std::{collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
 
     use crate::sexp::sexp_alloc::Alloc;
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Sym<'a> {
         pub(crate) data: &'a str,
     }
@@ -193,14 +193,14 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Formal<'a> {
         pub name: Sym<'a>,
-        pub value: super::Sexp<'a>,
+        pub value: &'a super::Sexp<'a>,
     }
 
     impl<'a> Formal<'a> {
-        pub fn new(name: Sym<'a>, value: super::Sexp<'a>) -> Self {
+        pub fn new(name: Sym<'a>, value: &'a super::Sexp<'a>) -> Self {
             Self { name, value }
         }
     }
@@ -208,15 +208,15 @@ pub mod lang {
     #[derive(Debug, PartialEq)]
     pub struct Closure<'a> {
         pub(crate) formals: &'a [Formal<'a>],
-        pub(crate) body: &'a mut super::Sexp<'a>,
-        pub(crate) environment: &'a mut Environment<'a>,
+        pub(crate) body: &'a super::Sexp<'a>,
+        pub(crate) environment: &'a Environment<'a>,
     }
 
     impl<'a> Closure<'a> {
         pub fn new(
             formals: &'a [Formal<'a>],
-            body: &'a mut super::Sexp<'a>,
-            environment: &'a mut Environment<'a>,
+            body: &'a super::Sexp<'a>,
+            environment: &'a Environment<'a>,
         ) -> Self {
             Self {
                 formals,
@@ -237,7 +237,7 @@ pub mod lang {
         Global,
         Base,
         Empty,
-        Normal(NormalEnv<'a>),
+        Normal(&'a NormalEnv<'a>),
         Namespace(&'a mut [&'a super::Sexp<'a>]),
     }
 
@@ -291,12 +291,6 @@ pub mod lang {
         }
     }
 
-    impl<'a> Into<Environment<'a>> for NormalEnv<'a> {
-        fn into(self) -> Environment<'a> {
-            Environment::Normal(self)
-        }
-    }
-
     #[derive(PartialEq)]
     pub struct ListFrame<'a> {
         pub data: Option<super::data::List<'a>>,
@@ -318,7 +312,7 @@ pub mod lang {
                     println!("{item}");
                     continue;
                 };
-                env.insert(name, index);
+                env.insert(name.data, index);
             }
             Self {
                 data: Some(data),
@@ -359,7 +353,7 @@ pub mod lang {
                             let Some(name) = item.tag.clone() else {
                                 unreachable!()
                             };
-                            env.insert(name, (block, idx));
+                            env.insert(name.data, (block, idx));
                         }
                     }
                     super::SexpKind::Nil => (),
@@ -406,8 +400,8 @@ pub enum SexpKind<'a> {
     Environment(lang::Environment<'a>),
     Promise {
         environment: lang::Environment<'a>,
-        expr: &'a mut Sexp<'a>,
-        value: &'a mut Sexp<'a>,
+        expr: &'a Sexp<'a>,
+        value: &'a Sexp<'a>,
     },
     Lang(lang::Lang<'a>),
     Bc(Bc<'a>),

@@ -2,10 +2,11 @@ use std::io::{BufWriter, Write};
 
 use crate::sexp::{
     bc::Bc,
-    sexp::{data, lang, MetaData, Sexp, SexpKind}, sexp_alloc::Alloc,
+    sexp::{data, lang, MetaData, Sexp, SexpKind},
+    sexp_alloc::Alloc,
 };
 
-use super::{sexptype, Flag, RDSHeader, RefsTable};
+use super::{sexptype, Flag, RDSHeader, RefsTableWriter};
 
 #[derive(Debug)]
 pub enum RDSWriterError {
@@ -108,13 +109,13 @@ pub trait RDSWriter<'a>: Write {
         Ok(())
     }
 
-    fn write_rds(&mut self, header: RDSHeader, sexp: &'a mut Sexp<'a>, arena : &'a mut Alloc) -> Ret {
+    fn write_rds(&mut self, header: RDSHeader, sexp: &'a Sexp<'a>, arena: &'a mut Alloc) -> Ret {
         self.write_header(header)?;
-        self.write_item(sexp, &mut RefsTable::new(arena))?;
+        self.write_item(sexp, &mut RefsTableWriter::new(arena))?;
         Ok(())
     }
 
-    fn write_item(&mut self, sexp: &'a mut Sexp<'a>, refs: &mut RefsTable) -> Ret {
+    fn write_item(&mut self, sexp: &'a Sexp<'a>, refs: &mut RefsTableWriter) -> Ret {
         // when creating refs there are different rules for creating
         // flags so it must be done seperatelly
         if let Some(idx) = refs.find(sexp) {
@@ -230,7 +231,18 @@ pub trait RDSWriter<'a>: Write {
         Ok(())
     }
 
-    fn write_bc(&mut self, bc: &Bc, refs: &mut RefsTable) -> Ret {
+    fn write_sym_inner(&mut self, sym: &'a lang::Sym<'a>, refs: &mut RefsTableWriter) -> Ret {
+        if let Some(idx) = refs.find_sym(sym) {
+            self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
+            return Ok(());
+        }
+        self.write_int(sexptype::SYMSXP as i32)?;
+        refs.add_sym(sym);
+        self.write_int(super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32)?;
+        self.write_charsxp(sym.data)
+    }
+
+    fn write_bc(&mut self, bc: &Bc, refs: &mut RefsTableWriter) -> Ret {
         let mut reps_vec = create_reps(bc, refs);
         let reps = reps_vec.len() as i32;
         let mut reps_visit = vec![];
@@ -244,27 +256,27 @@ pub trait RDSWriter<'a>: Write {
     fn write_bc_inner(
         &mut self,
         bc: &Bc,
-        refs: &mut RefsTable,
-        reps: &Vec<Sexp>,
+        refs: &mut RefsTableWriter,
+        reps: &Vec<RepsItem<'a>>,
         reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(super::sexptype::INTSXP as i32)?;
         self.write_intvec(&bc.instructions)?;
-        self.write_bcconsts(&bc.constpool, refs, reps, reps_count, reps_visit)
+        self.write_bcconsts(bc.constpool, refs, reps, reps_count, reps_visit)
     }
 
     fn write_bcconsts(
         &mut self,
-        consts: &Vec<Sexp>,
-        refs: &mut RefsTable,
-        reps: &Vec<Sexp>,
+        consts: &[&'a Sexp<'a>],
+        refs: &mut RefsTableWriter,
+        reps: &Vec<RepsItem<'a>>,
         reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         self.write_int(consts.len() as i32)?;
         for c in consts {
-            let flags: Flag = c.into();
+            let flags: Flag = (*c).into();
             match &c.kind {
                 SexpKind::Nil => {
                     self.write_int(sexptype::NILSXP as i32)?;
@@ -293,14 +305,14 @@ pub trait RDSWriter<'a>: Write {
         &mut self,
         lang: &lang::Lang,
         metadata: &MetaData,
-        refs: &mut RefsTable,
-        reps: &Vec<Sexp>,
+        refs: &mut RefsTableWriter,
+        reps: &Vec<RepsItem<'a>>,
         reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
         if let Some(pos) = reps
             .iter()
-            .position(|x| x == &SexpKind::Lang(lang.clone()).into())
+            .position(|x| x == lang)
         {
             if let Some(index) = reps_visit[pos] {
                 self.write_int(sexptype::BCREPREF as i32)?;
@@ -332,7 +344,7 @@ pub trait RDSWriter<'a>: Write {
         match &lang.target {
             lang::Target::Lang(lang) => {
                 self.write_bclang(
-                    lang.as_ref(),
+                    lang,
                     &MetaData::default(),
                     refs,
                     reps,
@@ -343,7 +355,7 @@ pub trait RDSWriter<'a>: Write {
             lang::Target::Sym(sym) => {
                 // padding dont ask why
                 self.write_int(0)?;
-                self.write_item(&sym.clone().into(), refs)?;
+                self.write_sym_inner(&sym, refs)?;
             }
         }
 
@@ -363,8 +375,8 @@ pub trait RDSWriter<'a>: Write {
         &mut self,
         list: &data::List,
         metadata: &MetaData,
-        refs: &mut RefsTable,
-        reps: &Vec<Sexp>,
+        refs: &mut RefsTableWriter,
+        reps: &Vec<RepsItem<'a>>,
         reps_count: &mut i32,
         reps_visit: &mut Vec<Option<i32>>,
     ) -> Ret {
@@ -379,7 +391,7 @@ pub trait RDSWriter<'a>: Write {
 
         if let Some(pos) = reps
             .iter()
-            .position(|x| x == &SexpKind::List(list.clone()).into())
+            .position(|x| x == list)
         {
             if let Some(index) = reps_visit[pos] {
                 self.write_int(sexptype::BCREPREF as i32)?;
@@ -407,16 +419,14 @@ pub trait RDSWriter<'a>: Write {
 
         let mut first: bool = true;
 
-        for item in list {
+        for item in list.into_iter() {
             if first {
                 first = false;
             } else {
                 self.write_int(sexptype::LISTSXP as i32)?;
             }
             if let Some(tag) = &item.tag {
-                let tag: lang::Sym = tag.as_str().into();
-                let tag: Sexp = tag.into();
-                self.write_item(&tag, refs)?;
+                self.write_sym_inner(tag, refs)?;
             } else {
                 self.write_int(sexptype::NILVALUE_SXP as i32)?;
             }
@@ -424,7 +434,7 @@ pub trait RDSWriter<'a>: Write {
             match &item.data.kind {
                 SexpKind::Lang(lang) => {
                     self.write_bclang(
-                        lang,
+                        &lang,
                         &item.data.metadata,
                         refs,
                         reps,
@@ -434,7 +444,7 @@ pub trait RDSWriter<'a>: Write {
                 }
                 SexpKind::List(list) => {
                     self.write_bclist(
-                        list,
+                        &list,
                         &item.data.metadata,
                         refs,
                         reps,
@@ -454,7 +464,7 @@ pub trait RDSWriter<'a>: Write {
         self.write_int(sexptype::NILVALUE_SXP as i32)
     }
 
-    fn write_vecsxp(&mut self, items: &'a [Sexp<'a>], refs: &mut RefsTable) -> Ret {
+    fn write_vecsxp(&mut self, items: &'a [&'a Sexp<'a>], refs: &mut RefsTableWriter) -> Ret {
         self.write_len(items.len())?;
 
         for item in items {
@@ -468,21 +478,19 @@ pub trait RDSWriter<'a>: Write {
         list: &data::List,
         _metadata: &MetaData,
         flag: Flag,
-        refs: &mut RefsTable,
+        refs: &mut RefsTableWriter,
     ) -> Ret {
         let mut flag = flag;
         if list.is_empty() {
             return self.write_int(super::sexptype::NILVALUE_SXP as i32);
         }
 
-        for item in list {
+        for item in list.into_iter() {
             flag.has_tag = item.tag.is_some();
             self.write_flags(flag.clone())?;
 
             if let Some(tag) = &item.tag {
-                let tag: lang::Sym = tag.as_str().into();
-                let tag: Sexp = tag.into();
-                self.write_item(&tag, refs)?;
+                self.write_sym_inner(tag, refs)?;
             }
 
             flag = Flag {
@@ -501,54 +509,73 @@ pub trait RDSWriter<'a>: Write {
         Ok(())
     }
 
-    fn write_formals(&mut self, formals: &Vec<lang::Formal>, refs: &mut RefsTable) -> Ret {
+    fn write_formals(&mut self, formals: &'a [lang::Formal], refs: &mut RefsTableWriter) -> Ret {
         if formals.is_empty() {
-            self.write_int(super::sexptype::NILVALUE_SXP as i32)
-        } else {
-            let vals: data::List = formals
-                .into_iter()
-                .map(|x| data::TaggedSexp::new_with_tag(*x.value.clone(), x.name.data.clone()))
-                .collect();
-            self.write_listsxp(
-                &vals,
-                &MetaData::default(),
-                Flag {
-                    sexp_type: super::sexptype::LISTSXP,
-                    level: 0,
-                    has_attributes: false,
-                    has_tag: false,
-                    obj: false,
-                    orig: 0,
-                },
-                refs,
-            )
+            return self.write_int(super::sexptype::NILVALUE_SXP as i32);
         }
+        let flag = Flag {
+            sexp_type: super::sexptype::LISTSXP,
+            level: 0,
+            has_attributes: false,
+            has_tag: true,
+            obj: false,
+            orig: 0,
+        };
+        for lang::Formal { name, value } in formals {
+            self.write_flags(flag.clone())?;
+
+            self.write_sym_inner(name, refs)?;
+            self.write_item(value, refs)?;
+        }
+
+        self.write_int(super::sexptype::NILVALUE_SXP as i32)?;
+        Ok(())
     }
 
     fn write_closxp(
         &mut self,
         closure: &lang::Closure,
         metadata: &MetaData,
-        refs: &mut RefsTable,
+        refs: &mut RefsTableWriter,
     ) -> Ret {
         if let Some(attr) = &metadata.attr {
             self.write_item(&attr, refs)?;
         }
-        self.write_item(&closure.environment.clone().into(), refs)?;
+        self.write_env_inner(&closure.environment, refs)?;
         self.write_formals(&closure.formals, refs)?;
         self.write_item(&closure.body, refs)?;
 
         Ok(())
     }
 
+    fn write_target(&mut self, target: &'a lang::Target<'a>, refs: &mut RefsTableWriter) -> Ret {
+        match target {
+            lang::Target::Lang(lang) => {
+                self.write_int(sexptype::LANGSXP as i32)?;
+                self.write_langsxp(lang, &MetaData::default(), refs)
+            }
+            lang::Target::Sym(sym) => {
+                if let Some(idx) = refs.find_sym(sym) {
+                    self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
+                    return Ok(());
+                }
+                self.write_int(sexptype::SYMSXP as i32)?;
+                refs.add_sym(sym);
+                self.write_int(
+                    super::string_format::ASCII << 12 | super::sexptype::CHARSXP as i32,
+                )?;
+                self.write_charsxp(sym.data)
+            }
+        }
+    }
+
     fn write_langsxp(
         &mut self,
         lang: &lang::Lang,
         _metadata: &MetaData,
-        refs: &mut RefsTable,
+        refs: &mut RefsTableWriter,
     ) -> Ret {
-        let target: &lang::Target = &lang.target;
-        self.write_item(&target.into(), refs)?;
+        self.write_target(&lang.target, refs)?;
         if lang.args.is_empty() {
             self.write_item(&SexpKind::Nil.into(), refs)
         } else {
@@ -568,27 +595,57 @@ pub trait RDSWriter<'a>: Write {
         }
     }
 
+    fn write_env_inner(
+        &mut self,
+        env: &'a lang::Environment<'a>,
+        refs: &mut RefsTableWriter,
+    ) -> Ret {
+        match env {
+            lang::Environment::Global => self.write_int(sexptype::GLOBALENV_SXP as i32),
+            lang::Environment::Base => self.write_int(sexptype::BASEENV_SXP as i32),
+            lang::Environment::Empty => self.write_int(sexptype::EMPTYENV_SXP as i32),
+            lang::Environment::Normal(normal) => self.write_envsxp_rec(normal, refs),
+            lang::Environment::Namespace(_) => todo!(),
+        }
+    }
+
+    fn write_envsxp_rec(
+        &mut self,
+        env: &'a lang::NormalEnv<'a>,
+        refs: &mut RefsTableWriter,
+    ) -> Ret {
+        if let Some(idx) = refs.find_normal_env(env) {
+            self.write_int(((idx + 1) << 8) | super::sexptype::REFSXP as i32)?;
+            return Ok(());
+        }
+
+        refs.add_normal_env(env);
+
+        self.write_int(sexptype::ENVSXP as i32)?;
+        self.write_envsxp(env, &MetaData::default(), refs)
+    }
+
     fn write_envsxp(
         &mut self,
-        env: &lang::NormalEnv,
+        env: &'a lang::NormalEnv<'a>,
         metadata: &MetaData,
-        refs: &mut RefsTable,
+        refs: &mut RefsTableWriter,
     ) -> Ret {
         self.write_int(if env.locked { 1 } else { 0 })?;
 
-        match env.parent.as_ref() {
+        match env.parent {
             lang::Environment::Global => self.write_int(super::sexptype::GLOBALENV_SXP as i32)?,
             lang::Environment::Base => self.write_int(super::sexptype::BASEENV_SXP as i32)?,
             lang::Environment::Empty => self.write_int(super::sexptype::EMPTYENV_SXP as i32)?,
             lang::Environment::Namespace(names) => {
                 self.write_int(super::sexptype::NAMESPACESXP as i32)?;
                 self.write_int(names.len() as i32)?;
-                for name in names {
+                for name in names.into_iter() {
                     self.write_item(name, refs)?
                 }
             }
             lang::Environment::Normal(env) => {
-                self.write_item(&lang::Environment::Normal(env.clone()).into(), refs)?;
+                self.write_envsxp_rec(env, refs)?;
             }
         };
 
@@ -615,7 +672,7 @@ pub trait RDSWriter<'a>: Write {
         };
 
         match &metadata.attr {
-            Some(attr) => self.write_item(attr.as_ref(), refs)?,
+            Some(attr) => self.write_item(attr, refs)?,
             None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
         };
 
@@ -623,20 +680,54 @@ pub trait RDSWriter<'a>: Write {
     }
 }
 
-fn create_reps(bc: &Bc, refs: &mut RefsTable) -> Vec<Sexp> {
+enum RepsItem<'a> {
+    Placeholder,
+    Lang(&'a lang::Lang<'a>),
+    List(&'a data::List<'a>),
+}
+
+impl<'a> PartialEq<Sexp<'a>> for RepsItem<'a> {
+    fn eq(&self, other: &Sexp<'a>) -> bool {
+        match &other.kind {
+            SexpKind::Lang(lang) => self == lang,
+            SexpKind::List(list) => self == list,
+            _ => false,
+        }
+    }
+}
+
+impl<'a> PartialEq<lang::Lang<'a>> for RepsItem<'a> {
+    fn eq(&self, other: &lang::Lang<'a>) -> bool {
+        match self {
+            RepsItem::Placeholder | RepsItem::List(_) => false,
+            RepsItem::Lang(lang) => std::ptr::eq(*lang, other) || *lang == other,
+        }
+    }
+}
+
+impl<'a> PartialEq<data::List<'a>> for RepsItem<'a> {
+    fn eq(&self, other: &data::List<'a>) -> bool {
+        match self {
+            RepsItem::Placeholder | RepsItem::Lang(_) => false,
+            RepsItem::List(list) => std::ptr::eq(*list, other) || *list == other,
+        }
+    }
+}
+
+fn create_reps<'a>(bc: &'a Bc<'a>, refs: &mut RefsTableWriter) -> Vec<RepsItem<'a>> {
     let mut temp = vec![];
-    let mut res = vec![SexpKind::Nil.into()];
-    for c in &bc.constpool {
+    let mut res = vec![RepsItem::Placeholder];
+    for c in bc.constpool.into_iter() {
         create_reps_inner(c, refs, &mut res, &mut temp);
     }
     res
 }
 
-fn create_reps_inner(
-    sexp: &Sexp,
-    refs: &mut RefsTable,
-    reps: &mut Vec<Sexp>,
-    temp: &mut Vec<Sexp>,
+fn create_reps_inner<'a>(
+    sexp: &'a Sexp<'a>,
+    refs: &mut RefsTableWriter,
+    reps: &mut Vec<RepsItem<'a>>,
+    temp: &mut Vec<RepsItem<'a>>,
 ) {
     if reps.iter().any(|x| x == sexp) {
         return;
@@ -644,27 +735,21 @@ fn create_reps_inner(
 
     match &sexp.kind {
         SexpKind::List(list) => {
-            create_reps_inner_list(sexp, list.as_slice(), refs, reps, temp);
+            create_reps_inner_list(list, refs, reps, temp);
         }
         SexpKind::Lang(lang) => {
             if temp.iter().any(|x| x == sexp) {
-                reps.push(sexp.clone());
+                reps.push(RepsItem::Lang(lang));
                 return;
             }
 
-            temp.push(sexp.clone());
+            temp.push(RepsItem::Lang(lang));
 
-            create_reps_inner(&lang.target.clone().into(), refs, reps, temp);
-            create_reps_inner_list(
-                &SexpKind::List(lang.args.clone()).into(),
-                lang.args.as_slice(),
-                refs,
-                reps,
-                temp,
-            );
+            create_reps_inner_target(&lang.target, refs, reps, temp);
+            create_reps_inner_list(&lang.args, refs, reps, temp);
         }
         SexpKind::Bc(bc) => {
-            for c in &bc.constpool {
+            for c in bc.constpool {
                 create_reps_inner(c, refs, reps, temp)
             }
         }
@@ -672,26 +757,51 @@ fn create_reps_inner(
     }
 }
 
-fn create_reps_inner_list(
-    sexp: &Sexp,
-    list: &[data::TaggedSexp],
-    refs: &mut RefsTable,
-    reps: &mut Vec<Sexp>,
-    temp: &mut Vec<Sexp>,
+fn create_reps_inner_target<'a>(
+    target: &'a lang::Target,
+    refs: &mut RefsTableWriter,
+    reps: &mut Vec<RepsItem<'a>>,
+    temp: &mut Vec<RepsItem<'a>>,
 ) {
-    if reps.iter().any(|x| x == sexp) {
+    match target {
+        lang::Target::Sym(_) => (),
+        lang::Target::Lang(lang) => {
+            if reps.iter().any(|x| x == *lang) {
+                return;
+            }
+            if temp.iter().any(|x| x == *lang) {
+                reps.push(RepsItem::Lang(lang));
+                return;
+            }
+
+            temp.push(RepsItem::Lang(lang));
+
+            create_reps_inner_target(&lang.target, refs, reps, temp);
+            create_reps_inner_list(&lang.args, refs, reps, temp);
+        }
+    }
+
+}
+
+fn create_reps_inner_list<'a>(
+    list: &'a data::List<'a>,
+    refs: &mut RefsTableWriter,
+    reps: &mut Vec<RepsItem<'a>>,
+    temp: &mut Vec<RepsItem<'a>>,
+) {
+    if reps.into_iter().any(|x| x == list) {
         return;
     }
-    if temp.iter().any(|x| x == sexp) {
-        reps.push(sexp.clone());
+    if temp.iter().any(|x| x == list) {
+        reps.push(RepsItem::List(list));
         return;
     }
 
-    temp.push(sexp.clone());
+    temp.push(RepsItem::List(list));
 
-    for item in list {
+    for item in list.into_iter() {
         create_reps_inner(&item.data, refs, reps, temp);
     }
 }
 
-impl<W> RDSWriter for BufWriter<W> where W: std::io::Write {}
+impl<'a, W> RDSWriter<'a> for BufWriter<W> where W: std::io::Write {}
