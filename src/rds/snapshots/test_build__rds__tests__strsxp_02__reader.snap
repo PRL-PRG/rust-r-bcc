@@ -9,7 +9,5 @@ Sexp {
             "ahoj",
         ],
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

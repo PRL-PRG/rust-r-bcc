@@ -9,7 +9,5 @@ Sexp {
             2,
         ],
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

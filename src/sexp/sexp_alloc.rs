@@ -47,15 +47,15 @@ impl<'a> Alloc<'a> {
         env
     }
 
-    pub fn get_base(&mut self) -> &'a lang::Environment<'a> {
+    pub fn get_base(&self) -> &'a lang::Environment<'a> {
         Self::get_inner_env(self.base_env)
     }
 
-    pub fn get_global(&mut self) -> &'a lang::Environment<'a> {
+    pub fn get_global(&self) -> &'a lang::Environment<'a> {
         Self::get_inner_env(self.global_env)
     }
 
-    pub fn get_empty(&mut self) -> &'a lang::Environment<'a> {
+    pub fn get_empty(&self) -> &'a lang::Environment<'a> {
         Self::get_inner_env(self.empty_env)
     }
 }

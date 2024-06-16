@@ -23,7 +23,7 @@ pub fn run() {
     }
 }
 
-impl<'a> RDSReader<'a> for TcpStream {}
+//impl<'a> RDSReader<'a> for TcpStream {}
 impl<'a> RDSWriter<'a> for TcpStream {}
 
 fn handle_conn(stream: TcpStream) {

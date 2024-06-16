@@ -20,8 +20,6 @@ impl From<std::io::Error> for RDSWriterError {
     }
 }
 
-static EMPTY_METADATA: MetaData<'_> = MetaData { attr: None };
-
 type Ret = Result<(), RDSWriterError>;
 
 pub trait RDSWriter<'a>: Write {
@@ -222,10 +220,10 @@ pub trait RDSWriter<'a>: Write {
             && flag.sexp_type != super::sexptype::ENVSXP
             && flag.sexp_type != super::sexptype::CLOSXP
         {
-            let Some(attr) = sexp.metadata.attr.clone() else {
+            let Some(attr) = sexp.metadata.get_attr() else {
                 unreachable!()
             };
-            self.write_item(&attr, refs, arena)?;
+            self.write_item(attr, refs, arena)?;
         }
         Ok(())
     }
@@ -372,7 +370,7 @@ pub trait RDSWriter<'a>: Write {
             *reps_count += 1;
         }
 
-        let type_val = if metadata.attr.is_some() {
+        let type_val = if metadata.get_attr().is_some() {
             sexptype::ATTRLANGSXP
         } else {
             sexptype::LANGSXP
@@ -380,7 +378,7 @@ pub trait RDSWriter<'a>: Write {
 
         self.write_int(type_val)?;
 
-        if let Some(attr) = metadata.attr.as_ref() {
+        if let Some(attr) = metadata.get_attr() {
             self.write_item(&attr, refs, arena)?;
         }
 
@@ -443,7 +441,7 @@ pub trait RDSWriter<'a>: Write {
             *reps_count += 1;
         }
 
-        let type_val = if metadata.attr.is_some() {
+        let type_val = if metadata.get_attr().is_some() {
             sexptype::ATTRLISTSXP
         } else {
             sexptype::LISTSXP
@@ -451,7 +449,7 @@ pub trait RDSWriter<'a>: Write {
 
         self.write_int(type_val)?;
 
-        if let Some(attr) = metadata.attr.as_ref() {
+        if let Some(attr) = metadata.get_attr() {
             self.write_item(&attr, refs, arena)?;
         }
 
@@ -590,7 +588,7 @@ pub trait RDSWriter<'a>: Write {
         refs: &mut RefsTableWriter<'a>,
         arena: &'a Alloc<'a>,
     ) -> Ret {
-        if let Some(attr) = &metadata.attr {
+        if let Some(attr) = metadata.get_attr() {
             self.write_item(&attr, refs, arena)?;
         }
         self.write_env_inner(&closure.environment, refs, arena)?;
@@ -733,7 +731,7 @@ pub trait RDSWriter<'a>: Write {
             None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
         };
 
-        match &metadata.attr {
+        match metadata.get_attr() {
             Some(attr) => self.write_item(attr, refs, arena)?,
             None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
         };

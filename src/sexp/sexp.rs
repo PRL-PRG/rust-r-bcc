@@ -1,3 +1,5 @@
+use std::cell::UnsafeCell;
+
 use super::bc::Bc;
 
 pub struct Loc {
@@ -5,15 +7,34 @@ pub struct Loc {
     col: usize,
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Default)]
 pub struct MetaData<'a> {
-    pub attr: Option<&'a Sexp<'a>>,
+    pub attr: UnsafeCell<Option<&'a Sexp<'a>>>,
 }
 
-impl MetaData<'_> {
+impl<'a> PartialEq for MetaData<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        let self_data = self.attr.get();
+        let other_data = other.attr.get();
+        std::ptr::eq(self_data, other_data)
+    }
+}
+
+impl<'a> std::fmt::Debug for MetaData<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = unsafe { self.attr.get().as_ref().unwrap() };
+        if f.alternate() {
+            write!(f, "MetaData {{ attr: {:#?} }}", inner)
+        } else {
+            write!(f, "MetaData {{ attr: {:?} }}", inner)
+        }
+    }
+}
+
+impl<'a> MetaData<'a> {
     pub fn is_obj(&self) -> bool {
-        if self.attr.is_some() {
-            let attr = self.attr.unwrap();
+        if self.get_attr().is_some() {
+            let attr = self.get_attr().unwrap();
             if let Sexp {
                 kind: SexpKind::List(list),
                 ..
@@ -33,6 +54,14 @@ impl MetaData<'_> {
             false
         }
     }
+
+    pub fn get_attr(&self) -> &Option<&'a Sexp<'a>> {
+        unsafe { self.attr.get().as_ref().unwrap() }
+    }
+
+    pub fn get_attr_mut(&self) -> &mut Option<&'a Sexp<'a>> {
+        unsafe { self.attr.get().as_mut().unwrap() }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,14 +74,16 @@ impl<'a> From<SexpKind<'a>> for Sexp<'a> {
     fn from(kind: SexpKind<'a>) -> Self {
         Sexp {
             kind,
-            metadata: MetaData { attr: None },
+            metadata: MetaData {
+                attr: UnsafeCell::new(None),
+            },
         }
     }
 }
 
 impl<'a> Sexp<'a> {
-    pub fn set_attr(&'a mut self, attr: &'a Sexp<'a>) {
-        self.metadata.attr = Some(attr);
+    pub fn set_attr(&'a self, attr: &'a Sexp<'a>) {
+        *self.metadata.get_attr_mut() = Some(attr);
     }
 }
 
@@ -90,14 +121,18 @@ pub mod data {
         pub imaginary: f64,
     }
 
-    #[derive(PartialEq)]
+    #[derive(PartialEq, Clone, Copy)]
     pub struct List<'a> {
         pub data: &'a [TaggedSexp<'a>],
     }
 
     impl std::fmt::Debug for List<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{:?}", self.data)
+            if f.alternate() {
+                write!(f, "{:#?}", self.data)
+            } else {
+                write!(f, "{:?}", self.data)
+            }
         }
     }
 
@@ -315,7 +350,11 @@ pub mod lang {
                 env.insert(name.data, index);
             }
             Self {
-                data: Some(data),
+                data: if std::ptr::eq(arena.nil_list.data, data.data) {
+                    None
+                } else {
+                    Some(data)
+                },
                 env,
             }
         }
@@ -343,7 +382,7 @@ pub mod lang {
     }
 
     impl<'a> HashFrame<'a> {
-        pub fn new(data: &'a [&'a super::Sexp<'a>], arena: &'a Alloc) -> Self {
+        pub fn new(data: &'a [&'a super::Sexp<'a>], arena: &'a Alloc<'a>) -> Self {
             let mut env = bumpalo::boxed::Box::new_in(HashMap::new(), arena);
 
             for (block, item) in data.iter().enumerate() {
@@ -362,7 +401,11 @@ pub mod lang {
             }
 
             Self {
-                data: Some(data),
+                data: if std::ptr::eq(arena.nil_vec, data) {
+                    None
+                } else {
+                    Some(data)
+                },
                 env,
             }
         }
@@ -399,7 +442,7 @@ pub enum SexpKind<'a> {
     Closure(lang::Closure<'a>),
     Environment(lang::Environment<'a>),
     Promise {
-        environment: lang::Environment<'a>,
+        environment: &'a lang::Environment<'a>,
         expr: &'a Sexp<'a>,
         value: &'a Sexp<'a>,
     },

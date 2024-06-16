@@ -8,7 +8,5 @@ Sexp {
             "a",
         ],
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

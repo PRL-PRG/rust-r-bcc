@@ -1,3 +1,5 @@
+use std::cell::UnsafeCell;
+
 use bumpalo::Bump;
 
 use crate::sexp::sexp::{lang, Sexp, SexpKind};
@@ -39,33 +41,33 @@ impl<'a> RDSResult<'a> {
 }
 
 pub struct RefsTableReader<'a> {
-    data: Vec<&'a Sexp<'a>>,
+    data: UnsafeCell<Vec<&'a Sexp<'a>>>,
     placeholder: &'a Sexp<'a>,
 }
 
 impl<'a> RefsTableReader<'a> {
     fn new(arena: &'a Bump) -> Self {
         Self {
-            data: vec![],
+            data: UnsafeCell::new(vec![]),
             placeholder: arena.alloc(SexpKind::Nil.into()),
         }
     }
 
-    fn add_ref(&mut self, data: &'a Sexp<'a>) -> i32 {
-        if let Some(idx) = self
-            .data
+    fn add_ref(&self, data: &'a Sexp<'a>) -> i32 {
+        let arr = unsafe { self.data.get().as_mut().unwrap() };
+        if let Some(idx) = arr
             .iter()
             .position(|x| std::ptr::eq(*x, data) || *x == data)
         {
             return idx as i32;
         }
-        self.data.push(data);
-        (self.data.len() - 1) as i32
+        arr.push(data);
+        (arr.len() - 1) as i32
     }
 
-    fn find(&mut self, data: &'a Sexp<'a>) -> Option<i32> {
-        if let Some(idx) = self
-            .data
+    fn find(&self, data: &'a Sexp<'a>) -> Option<i32> {
+        let arr = unsafe { self.data.get().as_mut().unwrap() };
+        if let Some(idx) = arr
             .iter()
             .position(|x| std::ptr::eq(*x, data) || *x == data)
         {
@@ -75,24 +77,27 @@ impl<'a> RefsTableReader<'a> {
         }
     }
 
-    fn get_ref(&mut self, index: i32) -> Option<&'a Sexp> {
-        if index < 0 || index > self.data.len() as i32 {
+    fn get_ref(&self, index: i32) -> Option<&'a Sexp<'a>> {
+        let arr = unsafe { self.data.get().as_mut().unwrap() };
+        if index < 0 || index > arr.len() as i32 {
             None
         } else {
-            Some(self.data[index as usize])
+            Some(arr[index as usize])
         }
     }
 
-    fn add_placeholder(&mut self) -> i32 {
-        self.data.push(self.placeholder);
-        (self.data.len() - 1) as i32
+    fn add_placeholder(&self) -> i32 {
+        let arr = unsafe { self.data.get().as_mut().unwrap() };
+        arr.push(self.placeholder);
+        (arr.len() - 1) as i32
     }
 
-    fn update_ref(&mut self, index: i32, data: &'a Sexp<'a>) -> bool {
-        if index < 0 || index > self.data.len() as i32 {
+    fn update_ref(&self, index: i32, data: &'a Sexp<'a>) -> bool {
+        let arr = unsafe { self.data.get().as_mut().unwrap() };
+        if index < 0 || index > arr.len() as i32 {
             false
         } else {
-            self.data[index as usize] = data;
+            arr[index as usize] = data;
             true
         }
     }
@@ -109,9 +114,7 @@ pub struct RefsTableWriter<'a> {
 
 impl<'a> RefsTableWriter<'a> {
     fn new(_arena: &'a Bump) -> Self {
-        Self {
-            data: vec![],
-        }
+        Self { data: vec![] }
     }
 
     fn add_ref(&mut self, data: &'a Sexp<'a>) -> i32 {
@@ -302,7 +305,7 @@ impl From<&Sexp<'_>> for Flag {
                 ) {
                     false
                 } else {
-                    value.metadata.attr.is_some()
+                    value.metadata.get_attr().is_some()
                 },
                 has_tag: if matches!(value.kind, SexpKind::Closure(_)) {
                     true

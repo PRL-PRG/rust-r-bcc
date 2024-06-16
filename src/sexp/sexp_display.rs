@@ -4,7 +4,7 @@ use super::sexp::{data, lang, Sexp, SexpKind};
 
 impl Display for Sexp<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(args) = &self.metadata.attr {
+        if let Some(args) = self.metadata.get_attr() {
             write!(f, "(data : {}, args : {})", self.kind, args)?;
         } else {
             write!(f, "{}", self.kind)?;

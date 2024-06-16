@@ -1,10 +1,28 @@
 use super::sexp::{lang, Sexp, SexpKind};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum ConstPoolItem<'a> {
     Sexp(&'a Sexp<'a>),
     Sym(&'a lang::Sym<'a>),
     Lang(&'a lang::Lang<'a>),
+}
+
+impl std::fmt::Debug for ConstPoolItem<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            match self {
+                ConstPoolItem::Sexp(data) => write!(f, "{data:#?}"),
+                ConstPoolItem::Sym(data) => write!(f, "{data:#?}"),
+                ConstPoolItem::Lang(data) => write!(f, "{data:#?}"),
+            }
+        } else {
+            match self {
+                ConstPoolItem::Sexp(data) => write!(f, "{data:?}"),
+                ConstPoolItem::Sym(data) => write!(f, "{data:?}"),
+                ConstPoolItem::Lang(data) => write!(f, "{data:?}"),
+            }
+        }
+    }
 }
 
 impl<'a> PartialEq<lang::Lang<'a>> for ConstPoolItem<'a> {

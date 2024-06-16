@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, fs::File, time::Instant};
+use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, time::Instant};
 
 use bumpalo::Bump;
 use rds::{
@@ -45,7 +45,7 @@ impl From<RDSWriterError> for MainError {
     }
 }
 
-impl<'a> RDSReader<'a> for File {}
+//impl<'a> RDSReader<'a> for File {}
 impl<'a> RDSWriter<'a> for File {}
 
 fn bench() {
@@ -58,44 +58,50 @@ fn bench() {
         .unwrap();
     assert!(command.wait().unwrap().success());
 
-    let mut arena = Bump::new();
-    let mut arena = Alloc::new(&arena);
+    let arena = Bump::new();
+    let arena = Alloc::new(&arena);
     let full_start = Instant::now();
-    let mut file = std::fs::File::open(path_env).unwrap();
+    let file = std::fs::File::open(path_env).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
-        header,
+        header: _,
         data: baseenv,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
-    let mut file = std::fs::File::open(format!("{path_env}.specials")).unwrap();
+    let file = std::fs::File::open(format!("{path_env}.specials")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
         header: _,
         data: specials,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
-    let mut file = std::fs::File::open(format!("{path_env}.builtins")).unwrap();
+    let file = std::fs::File::open(format!("{path_env}.builtins")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
         header: _,
         data: builtins,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
-    let mut file = std::fs::File::open(format!("{path_env}.internal")).unwrap();
+    let file = std::fs::File::open(format!("{path_env}.internal")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
         header: _,
         data: internals,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
-    let mut file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
+    let file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
         header: _,
         data: orig,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
-    let mut file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
+    let file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
         header: _,
         data: cmp,
-    } = file.read_rds(&arena).unwrap();
+    } = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
         unreachable!()
@@ -184,10 +190,11 @@ fn main() -> Result<(), MainError> {
     if args.len() != 3 {
         return Err(MainError::WrongArgs);
     }
-    let mut file = File::open(args[1].as_str())?;
+    let file = File::open(args[1].as_str())?;
     let alloc = Bump::new();
     let alloc = Alloc::new(&alloc);
-    let RDSResult { header, data: sexp } = file.read_rds(&alloc)?;
+    let file = RDSReader::new(UnsafeCell::new(file), &alloc);
+    let RDSResult { header, data: sexp } = file.read_rds()?;
 
     let compile = args[2] == "-c";
 
@@ -198,7 +205,7 @@ fn main() -> Result<(), MainError> {
             let mut compiler = Compiler::new(&alloc);
             let bc = compiler.cmpfun(cl);
             println!("{bc}");
-            println!("{:?}", compiler.warnings);
+            //println!("{:?}", compiler.warnings);
             //let bc: Sexp = bc.into();
             let bc: &Sexp = alloc.alloc(SexpKind::Closure(bc).into());
 

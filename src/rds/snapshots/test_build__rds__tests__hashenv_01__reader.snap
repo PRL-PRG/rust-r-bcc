@@ -13,14 +13,10 @@ Sexp {
             },
         ),
     ),
-    metadata: MetaData {
-        attr: Some(
-            Sexp {
-                kind: Nil,
-                metadata: MetaData {
-                    attr: None,
-                },
-            },
-        ),
-    },
+    metadata: MetaData { attr: Some(
+        Sexp {
+            kind: Nil,
+            metadata: MetaData { attr: None },
+        },
+    ) },
 }

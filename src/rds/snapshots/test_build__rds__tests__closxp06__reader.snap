@@ -12,9 +12,7 @@ Sexp {
                     },
                     value: Sexp {
                         kind: MissingArg,
-                        metadata: MetaData {
-                            attr: None,
-                        },
+                        metadata: MetaData { attr: None },
                     },
                 },
             ],
@@ -35,9 +33,7 @@ Sexp {
                                             data: "x",
                                         },
                                     ),
-                                    metadata: MetaData {
-                                        attr: None,
-                                    },
+                                    metadata: MetaData { attr: None },
                                 },
                             },
                             TaggedSexp {
@@ -48,22 +44,16 @@ Sexp {
                                             1.0,
                                         ],
                                     ),
-                                    metadata: MetaData {
-                                        attr: None,
-                                    },
+                                    metadata: MetaData { attr: None },
                                 },
                             },
                         ],
                     },
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             environment: Global,
         },
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

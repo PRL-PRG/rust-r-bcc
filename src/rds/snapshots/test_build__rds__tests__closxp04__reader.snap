@@ -1,5 +1,5 @@
 ---
-source: src/rds/rds_reader.rs
+source: src/rds/tests.rs
 expression: res
 ---
 Sexp {
@@ -8,14 +8,10 @@ Sexp {
             formals: [],
             body: Sexp {
                 kind: Nil,
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             environment: Global,
         },
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

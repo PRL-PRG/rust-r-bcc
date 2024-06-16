@@ -1,5 +1,5 @@
 ---
-source: src/rds/rds_reader.rs
+source: src/rds/tests.rs
 expression: res
 ---
 Sexp {
@@ -12,9 +12,7 @@ Sexp {
                     },
                     value: Sexp {
                         kind: MissingArg,
-                        metadata: MetaData {
-                            attr: None,
-                        },
+                        metadata: MetaData { attr: None },
                     },
                 },
                 Formal {
@@ -23,9 +21,7 @@ Sexp {
                     },
                     value: Sexp {
                         kind: MissingArg,
-                        metadata: MetaData {
-                            attr: None,
-                        },
+                        metadata: MetaData { attr: None },
                     },
                 },
             ],
@@ -46,9 +42,7 @@ Sexp {
                                             data: "x",
                                         },
                                     ),
-                                    metadata: MetaData {
-                                        attr: None,
-                                    },
+                                    metadata: MetaData { attr: None },
                                 },
                             },
                             TaggedSexp {
@@ -59,22 +53,16 @@ Sexp {
                                             data: "y",
                                         },
                                     ),
-                                    metadata: MetaData {
-                                        attr: None,
-                                    },
+                                    metadata: MetaData { attr: None },
                                 },
                             },
                         ],
                     },
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             environment: Global,
         },
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

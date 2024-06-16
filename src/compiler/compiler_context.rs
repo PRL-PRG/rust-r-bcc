@@ -28,7 +28,7 @@ impl<'a> CompilerContext<'a> {
         }
     }
 
-    pub fn new_promise(ctxt: &CompilerContext) -> Self {
+    pub fn new_promise(ctxt: &CompilerContext<'a>) -> Self {
         Self {
             top_level: false,
             tailcall: true,
@@ -43,7 +43,7 @@ impl<'a> CompilerContext<'a> {
         }
     }
 
-    pub fn new_arg(ctxt: &CompilerContext) -> Self {
+    pub fn new_arg(ctxt: &CompilerContext<'a>) -> Self {
         Self {
             tailcall: false,
             top_level: false,
@@ -58,12 +58,12 @@ impl<'a> CompilerContext<'a> {
         }
     }
 
-    pub fn new_function(ctxt : &CompilerContext, formals : &data::List, body : &Sexp) -> Self {
+    pub fn new_function(ctxt : &CompilerContext<'a>, formals : &data::List<'a>, body : &Sexp<'a>) -> Self {
         let tmp = CompilerContext::new_top(ctxt);
         tmp
     }
 
-    pub fn new_loop(ctxt: &CompilerContext, loop_label: LabelIdx, end_label: LabelIdx) -> Self {
+    pub fn new_loop(ctxt: &CompilerContext<'a>, loop_label: LabelIdx, end_label: LabelIdx) -> Self {
         let mut res = Self {
             loop_ctx: Some(LoopContext {
                 loop_label,

@@ -1,5 +1,5 @@
 ---
-source: src/rds/rds_reader.rs
+source: src/rds/tests.rs
 expression: res
 ---
 Sexp {
@@ -11,9 +11,7 @@ Sexp {
                         1.0,
                     ],
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             Sexp {
                 kind: Real(
@@ -21,9 +19,7 @@ Sexp {
                         2.0,
                     ],
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             Sexp {
                 kind: Real(
@@ -31,40 +27,34 @@ Sexp {
                         1.0,
                     ],
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
         ],
     ),
-    metadata: MetaData {
-        attr: Some(
-            Sexp {
-                kind: List(
-                    [
-                        TaggedSexp {
-                            tag: Some(
-                                "names",
-                            ),
-                            data: Sexp {
-                                kind: Str(
-                                    [
-                                        "a",
-                                        "b",
-                                        "",
-                                    ],
-                                ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+    metadata: MetaData { attr: Some(
+        Sexp {
+            kind: List(
+                [
+                    TaggedSexp {
+                        tag: Some(
+                            Sym {
+                                data: "names",
                             },
+                        ),
+                        data: Sexp {
+                            kind: Str(
+                                [
+                                    "a",
+                                    "b",
+                                    "",
+                                ],
+                            ),
+                            metadata: MetaData { attr: None },
                         },
-                    ],
-                ),
-                metadata: MetaData {
-                    attr: None,
-                },
-            },
-        ),
-    },
+                    },
+                ],
+            ),
+            metadata: MetaData { attr: None },
+        },
+    ) },
 }

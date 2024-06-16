@@ -8,117 +8,107 @@ Sexp {
             formals: [],
             body: Sexp {
                 kind: Nil,
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             environment: Global,
         },
     ),
-    metadata: MetaData {
-        attr: Some(
-            Sexp {
-                kind: List(
-                    [
-                        TaggedSexp {
-                            tag: Some(
-                                "srcref",
+    metadata: MetaData { attr: Some(
+        Sexp {
+            kind: List(
+                [
+                    TaggedSexp {
+                        tag: Some(
+                            Sym {
+                                data: "srcref",
+                            },
+                        ),
+                        data: Sexp {
+                            kind: Int(
+                                [
+                                    1,
+                                    9,
+                                    1,
+                                    23,
+                                    9,
+                                    23,
+                                    1,
+                                    1,
+                                ],
                             ),
-                            data: Sexp {
-                                kind: Int(
-                                    [
-                                        1,
-                                        9,
-                                        1,
-                                        23,
-                                        9,
-                                        23,
-                                        1,
-                                        1,
-                                    ],
-                                ),
-                                metadata: MetaData {
-                                    attr: Some(
-                                        Sexp {
-                                            kind: List(
-                                                [
-                                                    TaggedSexp {
-                                                        tag: Some(
-                                                            "srcfile",
+                            metadata: MetaData { attr: Some(
+                                Sexp {
+                                    kind: List(
+                                        [
+                                            TaggedSexp {
+                                                tag: Some(
+                                                    Sym {
+                                                        data: "srcfile",
+                                                    },
+                                                ),
+                                                data: Sexp {
+                                                    kind: Environment(
+                                                        Normal(
+                                                            NormalEnv {
+                                                                parent: Empty,
+                                                                locked: false,
+                                                                frame: Some([TaggedSexp { tag: Some(Sym { data: "lines" }), data: Sexp { kind: Str(["saveRDS(function() NULL, file=\"tmp.dat\", compress=FALSE)\n"]), metadata: MetaData { attr: None } } }, TaggedSexp { tag: Some(Sym { data: "filename" }), data: Sexp { kind: Str([""]), metadata: MetaData { attr: None } } }]),
+                                                                hash_frame: None,
+                                                            },
                                                         ),
-                                                        data: Sexp {
-                                                            kind: Environment(
-                                                                Normal(
-                                                                    NormalEnv {
-                                                                        parent: Empty,
-                                                                        locked: false,
-                                                                        frame: Some([TaggedSexp { tag: Some("lines"), data: Sexp { kind: Str(["saveRDS(function() NULL, file=\"tmp.dat\", compress=FALSE)\n"]), metadata: MetaData { attr: None } } }, TaggedSexp { tag: Some("filename"), data: Sexp { kind: Str([""]), metadata: MetaData { attr: None } } }]),
-                                                                        hash_frame: None,
-                                                                    },
-                                                                ),
-                                                            ),
-                                                            metadata: MetaData {
-                                                                attr: Some(
-                                                                    Sexp {
-                                                                        kind: List(
-                                                                            [
-                                                                                TaggedSexp {
-                                                                                    tag: Some(
-                                                                                        "class",
-                                                                                    ),
-                                                                                    data: Sexp {
-                                                                                        kind: Str(
-                                                                                            [
-                                                                                                "srcfilecopy",
-                                                                                                "srcfile",
-                                                                                            ],
-                                                                                        ),
-                                                                                        metadata: MetaData {
-                                                                                            attr: None,
-                                                                                        },
-                                                                                    },
-                                                                                },
-                                                                            ],
+                                                    ),
+                                                    metadata: MetaData { attr: Some(
+                                                        Sexp {
+                                                            kind: List(
+                                                                [
+                                                                    TaggedSexp {
+                                                                        tag: Some(
+                                                                            Sym {
+                                                                                data: "class",
+                                                                            },
                                                                         ),
-                                                                        metadata: MetaData {
-                                                                            attr: None,
+                                                                        data: Sexp {
+                                                                            kind: Str(
+                                                                                [
+                                                                                    "srcfilecopy",
+                                                                                    "srcfile",
+                                                                                ],
+                                                                            ),
+                                                                            metadata: MetaData { attr: None },
                                                                         },
                                                                     },
-                                                                ),
-                                                            },
-                                                        },
-                                                    },
-                                                    TaggedSexp {
-                                                        tag: Some(
-                                                            "class",
-                                                        ),
-                                                        data: Sexp {
-                                                            kind: Str(
-                                                                [
-                                                                    "srcref",
                                                                 ],
                                                             ),
-                                                            metadata: MetaData {
-                                                                attr: None,
-                                                            },
+                                                            metadata: MetaData { attr: None },
                                                         },
-                                                    },
-                                                ],
-                                            ),
-                                            metadata: MetaData {
-                                                attr: None,
+                                                    ) },
+                                                },
                                             },
-                                        },
+                                            TaggedSexp {
+                                                tag: Some(
+                                                    Sym {
+                                                        data: "class",
+                                                    },
+                                                ),
+                                                data: Sexp {
+                                                    kind: Str(
+                                                        [
+                                                            "srcref",
+                                                        ],
+                                                    ),
+                                                    metadata: MetaData { attr: None },
+                                                },
+                                            },
+                                        ],
                                     ),
+                                    metadata: MetaData { attr: None },
                                 },
-                            },
+                            ) },
                         },
-                    ],
-                ),
-                metadata: MetaData {
-                    attr: None,
-                },
-            },
-        ),
-    },
+                    },
+                ],
+            ),
+            metadata: MetaData { attr: None },
+        },
+    ) },
 }

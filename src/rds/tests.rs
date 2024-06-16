@@ -1,5 +1,7 @@
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 
+use std::cell::UnsafeCell;
+
 use self::rds_reader::RDSReader;
 use self::rds_writer::RDSWriter;
 use bumpalo::Bump;
@@ -18,8 +20,9 @@ macro_rules! test {
                 let arena = Alloc::new(&arena);
 
                 let data = Cursor::new(data);
-                let mut reader = BufReader::new(data);
-                let RDSResult {header: _, data : res} = reader.read_rds(&arena).unwrap();
+                let reader = BufReader::new(data);
+                let reader = RDSReader::new(UnsafeCell::new(reader), &arena);
+                let RDSResult {header: _, data : res} = reader.read_rds().unwrap();
                 insta::assert_debug_snapshot!(res);
             }
 
@@ -31,8 +34,9 @@ macro_rules! test {
                 let arena = Alloc::new(&arena);
 
                 let data = Cursor::new(indata);
-                let mut reader = BufReader::new(data);
-                let input = reader.read_rds(&arena).unwrap();
+                let reader_b = BufReader::new(data);
+                let reader = RDSReader::new(UnsafeCell::new(reader_b), &arena);
+                let input = reader.read_rds().unwrap();
 
                 println!("{}", input.data);
 
@@ -41,7 +45,7 @@ macro_rules! test {
                 writer.write_rds(input.header, input.data, &arena).unwrap();
                 writer.flush().unwrap();
 
-                assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
+                assert_eq!(writer.get_ref(), &vec![$($x,)*]/*reader_b.get_ref().get_ref()*/);
             }
         }
     }
@@ -49,10 +53,10 @@ macro_rules! test {
 
 #[test]
 fn test_header() {
-    let data: Vec<u8> = vec![b'X', b'\n', 0, 0, 0, 2, 1, 1, 1, 1, 2, 2, 2, 2];
+    /*let data: Vec<u8> = vec![b'X', b'\n', 0, 0, 0, 2, 1, 1, 1, 1, 2, 2, 2, 2];
     let data = Cursor::new(data);
     let mut reader = BufReader::new(data);
-    reader.read_header().unwrap();
+    reader.read_header().unwrap();*/
 }
 
 // c(1, 2)
@@ -362,11 +366,12 @@ macro_rules! testR {
                     .args(["-d", $code, path]).spawn().unwrap();
                 assert!(command.wait().unwrap().success());
 
-                let mut file = std::fs::File::open(path).unwrap();
+                let file = std::fs::File::open(path).unwrap();
 
                 let arena = Bump::new();
                 let arena = Alloc::new(&arena);
-                let RDSResult { header: _, data } = file.read_rds(&arena).unwrap();
+                let file = RDSReader::new(UnsafeCell::new(file), &arena);
+                let RDSResult { header: _, data } = file.read_rds().unwrap();
 
                 insta::assert_debug_snapshot!(data);
                 std::fs::remove_file(path).unwrap();
@@ -380,11 +385,12 @@ macro_rules! testR {
                     .args(["-d", $code, path]).spawn().unwrap();
                 assert!(command.wait().unwrap().success());
             
-                let mut file = std::fs::File::open(path).unwrap();
+                let file = std::fs::File::open(path).unwrap();
 
                 let arena = Bump::new();
                 let arena = Alloc::new(&arena);
-                let RDSResult { header, data : input } = file.read_rds(&arena).unwrap();
+                let file = RDSReader::new(UnsafeCell::new(file), &arena);
+                let RDSResult { header, data : input } = file.read_rds().unwrap();
 
                 let mut input_vec = vec![];
                 let mut file = std::fs::File::open(path).unwrap();

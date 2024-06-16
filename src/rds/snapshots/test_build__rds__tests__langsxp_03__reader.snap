@@ -1,5 +1,5 @@
 ---
-source: src/rds/rds_reader.rs
+source: src/rds/tests.rs
 expression: res
 ---
 Sexp {
@@ -21,9 +21,7 @@ Sexp {
                                         1.0,
                                     ],
                                 ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+                                metadata: MetaData { attr: None },
                             },
                         },
                     ],
@@ -38,15 +36,11 @@ Sexp {
                                 2.0,
                             ],
                         ),
-                        metadata: MetaData {
-                            attr: None,
-                        },
+                        metadata: MetaData { attr: None },
                     },
                 },
             ],
         },
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }

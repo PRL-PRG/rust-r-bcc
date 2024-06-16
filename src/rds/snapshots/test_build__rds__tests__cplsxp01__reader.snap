@@ -11,7 +11,5 @@ Sexp {
             },
         ],
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }
