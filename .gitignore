@@ -1,3 +1,4 @@
 /target
 *.profraw
 /mutants.out*
+/temp/*
