@@ -2,16 +2,16 @@ use std::fmt::Display;
 
 use crate::sexp::sexp_display::join_string;
 
-use super::bc::{Bc, BcOp};
+use super::bc::{Bc, BcOp, ConstPoolItem};
 
-impl Display for Bc {
+impl<'a> Display for Bc<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // instructions
         write!(f, "instruction : \n")?;
         let mut index: usize = 1;
         while index < self.instructions.len() {
             let inst = self.instructions[index];
-            let bc : BcOp = (inst as u8).into();
+            let bc: BcOp = (inst as u8).into();
             write!(f, "\t{bc}")?;
             index += 1;
             for val in &self.instructions[index..(index + bc.arity())] {
@@ -22,9 +22,23 @@ impl Display for Bc {
         }
 
         // const pool
-        write!(f, "constant pool : [{}]\n", join_string(&self.constpool, ", "))?;
+        write!(
+            f,
+            "constant pool : [{}]\n",
+            join_string(&self.constpool, ", ")
+        )?;
 
         Ok(())
+    }
+}
+
+impl Display for ConstPoolItem<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstPoolItem::Sexp(data) => write!(f, "{data}"),
+            ConstPoolItem::Sym(data) => write!(f, "{data}"),
+            ConstPoolItem::Lang(data) => write!(f, "{data}"),
+        }
     }
 }
 

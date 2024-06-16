@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use super::sexp::{data, lang, Sexp, SexpKind};
 
-impl Display for Sexp {
+impl Display for Sexp<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(args) = &self.metadata.attr {
             write!(f, "(data : {}, args : {})", self.kind, args)?;
@@ -34,7 +34,7 @@ impl Display for data::Complex {
     }
 }
 
-impl Display for SexpKind {
+impl Display for SexpKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SexpKind::Sym(sym) => write!(f, "{}", sym),
@@ -76,19 +76,19 @@ impl Display for SexpKind {
     }
 }
 
-impl Display for lang::Lang {
+impl Display for lang::Lang<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.target, join_string(&self.args, ", "))
     }
 }
 
-impl Display for lang::Sym {
+impl Display for lang::Sym<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.data)
     }
 }
 
-impl Display for lang::Target {
+impl Display for lang::Target<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             lang::Target::Lang(lang) => write!(f, "{lang}"),
@@ -97,7 +97,7 @@ impl Display for lang::Target {
     }
 }
 
-impl Display for data::TaggedSexp {
+impl Display for data::TaggedSexp<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.tag {
             Some(tag) => write!(f, "({tag}) {}", self.data),
@@ -106,7 +106,7 @@ impl Display for data::TaggedSexp {
     }
 }
 
-impl Display for lang::Environment {
+impl Display for lang::Environment<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             lang::Environment::Global => write!(f, "global env"),
@@ -120,7 +120,7 @@ impl Display for lang::Environment {
     }
 }
 
-impl Display for lang::NormalEnv {
+impl Display for lang::NormalEnv<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "parent : {}", self.parent)?;
         if let Some(frame) = &self.frame.data {
@@ -135,7 +135,7 @@ impl Display for lang::NormalEnv {
     }
 }
 
-impl Display for lang::Formal {
+impl Display for lang::Formal<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)?;
 
@@ -148,7 +148,7 @@ impl Display for lang::Formal {
     }
 }
 
-impl Display for lang::Closure {
+impl Display for lang::Closure<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "function({})\n", join_string(&self.formals, ", "))?;
         write!(f, "{}\n", self.body)?;

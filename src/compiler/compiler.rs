@@ -1,7 +1,7 @@
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
 
 use crate::sexp::{
-    bc::{Bc, BcOp},
+    bc::{Bc, BcOp, ConstPoolItem},
     sexp::{data, lang, MetaData, Sexp, SexpKind},
     sexp_alloc::Alloc,
 };
@@ -24,19 +24,21 @@ struct InlineInfo {
 
 pub struct Compiler<'a> {
     options: CompilerOptions,
-    context: CompilerContext,
-    code_buffer: CodeBuffer,
+    context: CompilerContext<'a>,
+    code_buffer: CodeBuffer<'a>,
 
     pub warnings: Vec<Warning>,
 
     env: &'a lang::Environment<'a>,
-    localenv: HashSet<String>,
+    localenv: HashSet<&'a str>,
     baseenv: Option<&'a lang::NormalEnv<'a>>,
     namespacebase: Option<&'a lang::NormalEnv<'a>>,
 
-    pub specials: HashSet<String>,
-    pub builtins: HashSet<String>,
-    pub internals: HashSet<String>,
+    pub specials: HashSet<&'a str>,
+    pub builtins: HashSet<&'a str>,
+    pub internals: HashSet<&'a str>,
+
+    arena: &'a Alloc<'a>,
 }
 
 const LANG_FUNCS: [&str; 46] = [
@@ -53,13 +55,13 @@ const MATH1_FUNCS: [&str; 24] = [
 ];
 
 impl<'a> Compiler<'a> {
-    pub fn new(arena: &'a mut Alloc<'a>) -> Self {
+    pub fn new(arena: &'a Alloc<'a>) -> Self {
         Self {
             options: CompilerOptions::default(),
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            env: arena.nil,
+            env: &lang::Environment::Global,
             localenv: HashSet::new(),
             baseenv: None,
             namespacebase: None,
@@ -69,16 +71,18 @@ impl<'a> Compiler<'a> {
             specials: HashSet::new(),
             builtins: HashSet::new(),
             internals: HashSet::new(),
+
+            arena,
         }
     }
 
-    pub fn new_options(inline_level: usize) -> Self {
+    pub fn new_options(inline_level: usize, arena: &'a mut Alloc<'a>) -> Self {
         Self {
             options: CompilerOptions { inline_level },
             context: CompilerContext::new_top(&CompilerContext::default()),
             code_buffer: CodeBuffer::new(),
 
-            env: lang::Environment::Global,
+            env: &lang::Environment::Global,
             localenv: HashSet::new(),
             baseenv: None,
             namespacebase: None,
@@ -88,6 +92,8 @@ impl<'a> Compiler<'a> {
             specials: HashSet::new(),
             builtins: HashSet::new(),
             internals: HashSet::new(),
+
+            arena,
         }
     }
 
@@ -100,10 +106,9 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn cmpfun(
-        &mut self,
-        closure: &'a lang::Closure,
-        arena: &'a mut Alloc<'a>,
-    ) -> &'a lang::Closure {
+        &'a mut self,
+        closure: &lang::Closure<'a>,
+    ) -> lang::Closure {
         let mut closure = closure;
         let data: Vec<data::TaggedSexp> = closure
             .formals
@@ -111,46 +116,49 @@ impl<'a> Compiler<'a> {
             .map(|x| data::TaggedSexp::new_with_tag(x.value, &x.name))
             .collect();
         let tmp = data::List {
-            data: arena.alloc_slice_clone(data.as_slice()),
+            data: self.arena.alloc_slice_clone(data.as_slice()),
         };
-        let env = arena.alloc(lang::NormalEnv::new(
+        let env = self.arena.alloc(lang::NormalEnv::new(
             closure.environment,
             false,
-            lang::ListFrame::new(tmp, arena),
-            lang::HashFrame::new(arena.nil_vec, arena),
+            lang::ListFrame::new(tmp, &mut self.arena),
+            lang::HashFrame::new(self.arena.nil_vec, &mut self.arena),
         ));
-        let env = arena.alloc(lang::Environment::Normal(env));
+        let env = self.arena.alloc(lang::Environment::Normal(env));
         self.env = env;
         if self.options.inline_level > 0 {
             self.localenv = HashSet::new();
             self.find_locals(&closure.body);
         }
-        let body =
-            arena.alloc(SexpKind::Bc(self.gen_code(closure.body, Some(closure.body))).into());
-        closure.body = body;
-        closure
+        let body = self
+            .arena
+            .alloc(SexpKind::Bc(self.gen_code(closure.body, Some(closure.body.into()))).into());
+        //closure.body = body;
+        //closure
+        lang::Closure::new(closure.formals, body, closure.environment)
     }
 
-    fn gen_code(&mut self, target: &'a Sexp<'a>, loc: Option<&'a Sexp<'a>>) -> Bc {
+    fn gen_code(&'a mut self, target: &'a Sexp<'a>, loc: Option<ConstPoolItem<'a>>) -> Bc {
         let tmp = if let Some(loc) = loc {
             CodeBuffer::new_with_expr(loc.clone())
         } else {
             CodeBuffer::new()
         };
         let orig = std::mem::replace(&mut self.code_buffer, tmp);
-        self.code_buffer.add_const(target.clone());
+        self.code_buffer.add_const(target.into());
         self.cmp(&target, false, false);
         let locs = self.create_expression_loc();
-        self.code_buffer.add_const(locs);
-        self.code_buffer.patch_labels();
-        std::mem::replace(&mut self.code_buffer, orig).bc
+        self.code_buffer.add_const(locs.into());
+        //self.code_buffer.patch_labels();
+        //std::mem::replace(&mut self.code_buffer, orig).bc
+        self.code_buffer.create_bc(self.arena)
     }
 
     /// Default for missing_ok and set_loc in original compiler
     /// is missing_ok = FALSE and set_loc = TRUE
-    fn cmp(&mut self, sexp: &Sexp, missing_ok: bool, set_loc: bool) {
+    fn cmp(&mut self, sexp: &'a Sexp<'a>, missing_ok: bool, set_loc: bool) {
         let orig = if set_loc {
-            self.code_buffer.set_current_expr(sexp.clone())
+            self.code_buffer.set_current_expr(sexp.into())
         } else {
             None
         };
@@ -183,7 +191,7 @@ impl<'a> Compiler<'a> {
         self.code_buffer.restore_current_expr(orig);
     }
 
-    fn cmp_const(&mut self, sexp: &Sexp) {
+    fn cmp_const(&mut self, sexp: &'a Sexp<'a>) {
         match &sexp.kind {
             SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
             SexpKind::Logic(val) if val.len() == 1 && val[0] == data::Logic::False => {
@@ -193,17 +201,17 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.add_instr(BcOp::LDTRUE_OP)
             }
             _ => {
-                let ci = self.code_buffer.add_const(sexp.clone());
+                let ci = self.code_buffer.add_const(sexp.into());
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
             }
         }
     }
 
-    fn cmp_sym(&mut self, sym: &lang::Sym, missing_ok: bool) {
-        match sym.data.as_str() {
+    fn cmp_sym(&mut self, sym: &'a lang::Sym<'a>, missing_ok: bool) {
+        match sym.data {
             ".." => self.code_buffer.add_instr(BcOp::DOTSERR_OP),
             name if name.starts_with("..") => {
-                let index = self.code_buffer.add_const(sym.clone().into());
+                let index = self.code_buffer.add_const(sym.into());
                 if missing_ok {
                     self.code_buffer.add_instr2(BcOp::DDVAL_MISSOK_OP, index)
                 } else {
@@ -215,7 +223,7 @@ impl<'a> Compiler<'a> {
                     self.warnings
                         .push(Warning::VariableDoesNotExist(name.to_string()))
                 }
-                let index = self.code_buffer.add_const(sym.clone().into());
+                let index = self.code_buffer.add_const(sym.into());
                 if missing_ok {
                     self.code_buffer.add_instr2(BcOp::GETVAR_MISSOK_OP, index);
                 } else {
@@ -231,8 +239,8 @@ impl<'a> Compiler<'a> {
     fn cmp_call(&mut self, call: &lang::Lang, inline_ok: bool) {
         // set up state
         let mut sexp_tmp = std::mem::take(&mut self.code_buffer.current_expr);
-        let orig = self.code_buffer.set_current_expr(call.clone().into());
-        let tmp = CompilerContext::new_call(&self.context, call.clone().into());
+        let orig = self.code_buffer.set_current_expr(call.into());
+        let tmp = CompilerContext::new_call(&self.context, call);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
         if inline_ok && self.try_inline(call) {
@@ -244,10 +252,15 @@ impl<'a> Compiler<'a> {
                 let orig_tailcall = self.context.tailcall;
                 self.context.tailcall = false;
 
-                self.cmp(&lang.as_ref().clone().into(), false, true);
+                // originally this
+                //self.cmp(&lang.as_ref().clone().into(), false, true);
+                let orig = self.code_buffer.set_current_expr((*lang).into());
+                self.cmp_call(lang, true);
+                self.code_buffer.restore_current_expr(orig);
+
                 self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
                 self.cmp_args(&call.args);
-                let index = self.code_buffer.add_const(call.clone().into());
+                let index = self.code_buffer.add_const_lang(call);
                 self.code_buffer.add_instr2(BcOp::CALL_OP, index);
 
                 self.context.tailcall = orig_tailcall;
@@ -256,10 +269,10 @@ impl<'a> Compiler<'a> {
                 }
             }
             lang::Target::Sym(sym) => {
-                let index = self.code_buffer.add_const(sym.clone().into());
+                let index = self.code_buffer.add_const(sym.into());
                 self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
                 self.cmp_args(&call.args);
-                let index = self.code_buffer.add_const(call.clone().into());
+                let index = self.code_buffer.add_const(call.into());
                 self.code_buffer.add_instr2(BcOp::CALL_OP, index);
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
@@ -277,13 +290,13 @@ impl<'a> Compiler<'a> {
         let tmp = CompilerContext::new_promise(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
-        for arg in args {
+        for arg in args.into_iter() {
             match &arg.data.kind {
                 SexpKind::MissingArg => {
                     self.code_buffer.add_instr(BcOp::DOMISSING_OP);
                     self.cmp_tag(&arg.tag);
                 }
-                SexpKind::Sym(sym) if sym.data.as_str() == "..." => {
+                SexpKind::Sym(sym) if sym.data == "..." => {
                     self.code_buffer.add_instr(BcOp::DODOTS_OP);
                 }
                 SexpKind::Bc(_) => todo!(),
@@ -294,7 +307,10 @@ impl<'a> Compiler<'a> {
                 } => todo!(),
                 SexpKind::Sym(_) | SexpKind::Lang(_) => {
                     let curr = self.code_buffer.current_expr.clone();
-                    let code = self.gen_code(&arg.data, curr.as_ref());
+                    let code = self
+                        .arena
+                        .alloc(SexpKind::Bc(self.gen_code(&arg.data, curr)).into())
+                        as &'a Sexp<'a>;
                     let index = self.code_buffer.add_const(code.into());
                     self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
                     self.cmp_tag(&arg.tag);
@@ -316,7 +332,7 @@ impl<'a> Compiler<'a> {
                     self.cmp_tag(&arg.tag);
                 }
                 _ => {
-                    let index = self.code_buffer.add_const(arg.data.clone());
+                    let index = self.code_buffer.add_const(arg.data.into());
                     self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
                     self.cmp_tag(&arg.tag);
                 }
@@ -326,11 +342,9 @@ impl<'a> Compiler<'a> {
         std::mem::swap(&mut self.context, &mut orig_context);
     }
 
-    fn cmp_tag(&mut self, tag: &Option<String>) {
+    fn cmp_tag(&mut self, tag: &Option<&'a lang::Sym<'a>>) {
         if let Some(tag) = tag {
-            let tag: lang::Sym = tag.as_str().into();
-            let tag: Sexp = tag.into();
-            let index = self.code_buffer.add_const(tag);
+            let index = self.code_buffer.add_const((*tag).into());
             self.code_buffer.add_instr2(BcOp::SETTAG_OP, index);
         }
     }
@@ -339,22 +353,32 @@ impl<'a> Compiler<'a> {
         self.env.find_local_var(name).is_some()
     }
 
-    fn create_expression_loc(&mut self) -> Sexp {
-        Sexp {
-            kind: SexpKind::Int(std::mem::take(&mut self.code_buffer.expression_buffer)),
-            metadata: MetaData {
-                attr: Some(Box::new(Sexp {
-                    kind: SexpKind::List(vec![data::TaggedSexp {
-                        tag: Some("class".into()),
-                        data: Sexp {
-                            kind: SexpKind::Str(vec!["expressionsIndex".into()]),
-                            metadata: MetaData { attr: None },
-                        },
-                    }]),
-                    metadata: MetaData { attr: None },
-                })),
-            },
-        }
+    fn create_expression_loc(&mut self) -> &'a Sexp<'a> {
+        let ints = self
+            .arena
+            .alloc_slice_copy(self.code_buffer.expression_buffer.as_slice());
+        self.code_buffer.expression_buffer = Vec::default();
+
+        let string = self
+            .arena
+            .alloc_slice_copy(&[self.arena.alloc_str("expressionsIndex") as &'a str]);
+        let tag = self
+            .arena
+            .alloc(lang::Sym::new(self.arena.alloc_str("class")))
+            as &'a lang::Sym<'a>;
+        let data = self.arena.alloc(Sexp {
+            kind: SexpKind::Str(string),
+            metadata: MetaData { attr: None },
+        });
+        let data = self
+            .arena
+            .alloc_slice_fill_with(1, |_| data::TaggedSexp::new_with_tag(data, tag));
+        let attr = data::List { data };
+        let attr = self.arena.alloc(SexpKind::List(attr).into());
+        self.arena.alloc(Sexp {
+            kind: SexpKind::Int(ints),
+            metadata: MetaData { attr: Some(attr) },
+        })
     }
 
     fn cmp_prim2(&mut self, first: &Sexp, second: &Sexp, full: &lang::Lang, op: BcOp) {
@@ -399,9 +423,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn any_dots(&self, sexp: &lang::Lang) -> bool {
-        for args in &sexp.args {
+        for args in sexp.args.iter() {
             match &args.data.kind {
-                SexpKind::Sym(sym) if sym.data.as_str() == "..." => return true,
+                SexpKind::Sym(sym) if sym.data == "..." => return true,
                 _ => (),
             }
         }
@@ -527,10 +551,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn dots_or_missing(&self, args: &data::List) -> bool {
-        for arg in args {
+        for arg in args.into_iter() {
             match &arg.data.kind {
                 SexpKind::MissingArg => return true,
-                SexpKind::Sym(sym) if sym.data.as_str() == "..." => return true,
+                SexpKind::Sym(sym) if sym.data == "..." => return true,
                 _ => (),
             }
         }
@@ -540,7 +564,7 @@ impl<'a> Compiler<'a> {
     fn try_inline(&mut self, expr: &lang::Lang) -> bool {
         let sym = match &expr.target {
             lang::Target::Lang(_) => return false,
-            lang::Target::Sym(s) => s.data.as_str(),
+            lang::Target::Sym(s) => s.data,
         };
 
         let info = self.get_inlineinfo(sym);
@@ -638,15 +662,15 @@ impl<'a> Compiler<'a> {
                 let tailcall = self.context.tailcall;
                 self.context.tailcall = false;
                 for inner in &expr.args[0..(expr.args.len() - 1)] {
-                    self.code_buffer.set_current_expr(inner.data.clone());
+                    self.code_buffer.set_current_expr(inner.data.into());
                     self.cmp(&inner.data, false, false);
-                    self.code_buffer.set_current_expr(inner.data.clone());
+                    self.code_buffer.set_current_expr(inner.data.into());
                     self.code_buffer.add_instr(BcOp::POP_OP);
                 }
                 self.context.tailcall = tailcall;
 
                 self.code_buffer
-                    .set_current_expr(expr.args.last().unwrap().data.clone());
+                    .set_current_expr(expr.args.last().unwrap().data.into());
                 self.cmp(&expr.args.last().unwrap().data, false, false);
 
                 self.code_buffer.restore_current_expr(orig_loc);
@@ -659,7 +683,7 @@ impl<'a> Compiler<'a> {
                 self.cmp(&expr.args[1].data, false, true);
                 self.context.tailcall = tailcall;
 
-                let index = self.code_buffer.add_const(expr.args[0].data.clone());
+                let index = self.code_buffer.add_const(expr.args[0].data.into());
                 self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
                 true
             }
@@ -762,7 +786,7 @@ impl<'a> Compiler<'a> {
                 self.context.tailcall = false;
                 self.cmp(seq, false, true);
                 self.context.tailcall = taicall;
-                let index = self.code_buffer.add_const(sym.clone());
+                let index = self.code_buffer.add_const((*sym).into());
                 let call_idx = self.code_buffer.add_const(expr.clone().into());
                 if self.check_skip_loopctx(body, true) {
                     self.cmp_for_body(false, call_idx, body, index);
@@ -895,6 +919,8 @@ impl<'a> Compiler<'a> {
                 _ => self.cmp_special(expr),
             },
             "function" => {
+                false
+                /*
                 let forms = &expr.args[0].data;
                 let body = &expr.args[1].data;
 
@@ -923,7 +949,7 @@ impl<'a> Compiler<'a> {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
 
-                true
+                true*/
             }
             "return" if expr.args.len() > 1 || self.dots_or_missing(&expr.args) => {
                 self.cmp_special(expr)
@@ -956,7 +982,7 @@ impl<'a> Compiler<'a> {
                     let _ = std::mem::replace(&mut self.context, orig);
 
                     let expr_idx = self.code_buffer.add_const(expr.clone().into());
-                    let sym_idx = self.code_buffer.add_const(expr.args[1].data.clone());
+                    let sym_idx = self.code_buffer.add_const(expr.args[1].data.into());
 
                     self.code_buffer
                         .add_instr_n(BcOp::DOLLAR_OP, &[expr_idx, sym_idx]);
@@ -969,6 +995,8 @@ impl<'a> Compiler<'a> {
                 _ => self.cmp_special(expr),
             },
             "local" if expr.args.len() == 1 => {
+                false
+                /*
                 let fun_sym = lang::Sym::new("function".into());
                 let fun_sym: lang::Target = fun_sym.into();
                 let lang = lang::Lang::new(
@@ -984,7 +1012,7 @@ impl<'a> Compiler<'a> {
 
                 self.cmp(&lang.into(), false, true);
 
-                true
+                true*/
             }
             "is.character" => self.cmp_is(BcOp::ISCHARACTER_OP, expr),
             "is.complex" => self.cmp_is(BcOp::ISCOMPLEX_OP, expr),
@@ -1043,7 +1071,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn cmp_builtin(&mut self, expr: &lang::Lang, internal: bool) -> bool {
-        let index = self.code_buffer.add_const(expr.target.clone().into());
+        let index = self.code_buffer.add_const((&expr.target).into());
 
         if internal {
             self.code_buffer.add_instr2(BcOp::GETINTLBUILTIN_OP, index);
@@ -1088,7 +1116,7 @@ impl<'a> Compiler<'a> {
         for arg in args {
             match &arg.data.kind {
                 SexpKind::MissingArg => todo!(),
-                SexpKind::Sym(sym) if sym.data.as_str() == ".." => todo!(),
+                SexpKind::Sym(sym) if sym.data == ".." => todo!(),
                 SexpKind::Bc(_) => todo!(),
                 SexpKind::Promise {
                     environment: _,
@@ -1120,7 +1148,7 @@ impl<'a> Compiler<'a> {
                     self.cmp_tag(&arg.tag);
                 }
                 _ => {
-                    let index = self.code_buffer.add_const(arg.data.clone());
+                    let index = self.code_buffer.add_const(arg.data.into());
                     self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
                     self.cmp_tag(&arg.tag);
                 }
@@ -1190,13 +1218,13 @@ impl<'a> Compiler<'a> {
     fn check_skip_loopctx_lang(&self, lang: &lang::Lang, break_ok: bool) -> bool {
         match &lang.target {
             lang::Target::Sym(sym) => {
-                if !break_ok && matches!(sym.data.as_str(), "break" | "next") {
+                if !break_ok && matches!(sym.data, "break" | "next") {
                     false
-                } else if self.is_loop_stop_fun(sym.data.as_str()) {
+                } else if self.is_loop_stop_fun(sym.data) {
                     true
-                } else if self.is_loop_top_fun(sym.data.as_str()) {
+                } else if self.is_loop_top_fun(sym.data) {
                     self.check_skip_loopctx_list(&lang.args, break_ok)
-                } else if matches!(sym.data.as_str(), "eval" | "evalq" | "source") {
+                } else if matches!(sym.data, "eval" | "evalq" | "source") {
                     false
                 } else {
                     self.check_skip_loopctx_list(&lang.args, false)
@@ -1218,7 +1246,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn check_skip_loopctx_list(&self, list: &data::List, break_ok: bool) -> bool {
-        for arg in list {
+        for arg in list.into_iter() {
             if !self.missing(&arg.data) && !self.check_skip_loopctx(&arg.data, break_ok) {
                 return false;
             }
@@ -1272,9 +1300,9 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn get_assigned_var(&mut self, sexp: &Sexp) -> Option<String> {
+    fn get_assigned_var(&mut self, sexp: &Sexp) -> Option<&'a str> {
         match &sexp.kind {
-            SexpKind::Sym(sym) => Some(sym.data.clone()),
+            SexpKind::Sym(sym) => Some(sym.data),
             SexpKind::Lang(lang) => self.get_assigned_var(&lang.args[0].data),
             SexpKind::MissingArg => todo!(),
             _ => None,
@@ -1290,7 +1318,7 @@ impl<'a> Compiler<'a> {
             return;
         };
 
-        match target.data.as_str() {
+        match target.data {
             "=" | "<-" | "for" => {
                 let var = self.get_assigned_var(&sexp.args[0].data);
                 if let Some(var) = var {
@@ -1310,7 +1338,7 @@ impl<'a> Compiler<'a> {
             _ => (),
         }
 
-        for arg in &sexp.args {
+        for arg in sexp.args.into_iter() {
             self.find_locals(&arg.data);
         }
     }
@@ -1335,6 +1363,7 @@ impl CompilerOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
     use std::io::{BufWriter, Read, Write};
 
     use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
@@ -1346,6 +1375,8 @@ mod tests {
 
                 #[test]
                 fn compiler() {
+                    let mut arena = Bump::new();
+                    let mut arena = Alloc::new(&mut arena);
                     let path = format!("temp/{}_compiler.dat", stringify!($name));
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
@@ -1370,7 +1401,7 @@ mod tests {
                     let RDSResult {
                         header,
                         data: input,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let mut input_vec = vec![];
                     let mut file = std::fs::File::open(path_comp).unwrap();
@@ -1380,25 +1411,25 @@ mod tests {
                     let RDSResult {
                         header: _,
                         data: correct,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&arena).unwrap();
 
                     println!("{}", input);
 
-                    let mut compiler = Compiler::new_options(0);
-                    let SexpKind::Closure(cl) = input.kind else {
+                    let mut compiler = Compiler::new_options(0, &mut arena);
+                    let SexpKind::Closure(cl) = &input.kind else {
                         unreachable!();
                     };
                     let bc = compiler.cmpfun(cl);
 
                     insta::assert_debug_snapshot!(compiler.warnings);
-                    let input: Sexp = bc.into();
+                    let input: &Sexp = arena.alloc(SexpKind::Closure(bc).into());
 
                     println!("My compilation:\n{input}\n");
                     println!("Correct compilation:\n{correct}");
 
                     let outdata: Vec<u8> = vec![];
                     let mut writer = BufWriter::new(outdata);
-                    writer.write_rds(header, input).unwrap();
+                    writer.write_rds(header, input, &mut arena).unwrap();
                     writer.flush().unwrap();
 
                     assert_eq!(writer.get_ref(), &input_vec);
@@ -1416,6 +1447,8 @@ mod tests {
 
                 #[test]
                 fn compiler() {
+                    let mut arena = Bump::new();
+                    let mut arena = Alloc::new(&mut arena);
                     let path = format!("temp/{}_compiler.dat", stringify!($name));
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
@@ -1452,7 +1485,7 @@ mod tests {
                     let RDSResult {
                         header,
                         data: input,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let mut input_vec = vec![];
                     let mut file = std::fs::File::open(path_comp).unwrap();
@@ -1462,25 +1495,25 @@ mod tests {
                     let RDSResult {
                         header: _,
                         data: correct,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let mut file = std::fs::File::open(path_env).unwrap();
                     let RDSResult {
                         header: _,
                         data: baseenv,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let mut file = std::fs::File::open(format!("{path_env}.specials")).unwrap();
                     let RDSResult {
                         header: _,
                         data: specials,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let mut file = std::fs::File::open(format!("{path_env}.builtins")).unwrap();
                     let RDSResult {
                         header: _,
                         data: builtins,
-                    } = file.read_rds().unwrap();
+                    } = file.read_rds(&mut arena).unwrap();
 
                     let SexpKind::Str(specials) = specials.kind else {
                         unreachable!()
@@ -1492,8 +1525,8 @@ mod tests {
 
                     println!("{}", input);
 
-                    let mut compiler = Compiler::new();
-                    let SexpKind::Closure(cl) = input.kind else {
+                    let mut compiler = Compiler::new(&arena);
+                    let SexpKind::Closure(cl) = &input.kind else {
                         unreachable!();
                     };
                     let SexpKind::Environment(lang::Environment::Normal(baseenv)) = baseenv.kind
@@ -1501,21 +1534,22 @@ mod tests {
                         unreachable!()
                     };
 
-                    compiler.specials = HashSet::from_iter(specials.into_iter());
-                    compiler.builtins = HashSet::from_iter(builtins.into_iter());
+                    compiler.specials = HashSet::from_iter(specials.to_vec().into_iter());
+                    compiler.builtins = HashSet::from_iter(builtins.to_vec().into_iter());
 
                     compiler.set_baseenv(baseenv);
                     let bc = compiler.cmpfun(cl);
 
                     insta::assert_debug_snapshot!(compiler.warnings);
-                    let input: Sexp = bc.into();
+                    //let input: Sexp = bc.into();
+                    let input: &Sexp = arena.alloc(SexpKind::Closure(bc).into());
 
                     println!("My compilation:\n{input}\n");
                     println!("Correct compilation:\n{correct}");
 
                     let outdata: Vec<u8> = vec![];
                     let mut writer = BufWriter::new(outdata);
-                    writer.write_rds(header, input).unwrap();
+                    writer.write_rds(header, input, &mut arena).unwrap();
                     writer.flush().unwrap();
 
                     assert_eq!(writer.get_ref(), &input_vec, "Binary are not the same");

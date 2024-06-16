@@ -33,7 +33,7 @@ pub struct RDSResult<'a> {
 }
 
 impl<'a> RDSResult<'a> {
-    pub fn new(header: RDSHeader, data: &'a Sexp) -> Self {
+    pub fn new(header: RDSHeader, data: &'a Sexp<'a>) -> Self {
         Self { header, data }
     }
 }
@@ -44,18 +44,18 @@ pub struct RefsTableReader<'a> {
 }
 
 impl<'a> RefsTableReader<'a> {
-    fn new(arena: &'a mut Bump) -> Self {
+    fn new(arena: &'a Bump) -> Self {
         Self {
             data: vec![],
             placeholder: arena.alloc(SexpKind::Nil.into()),
         }
     }
 
-    fn add_ref(&mut self, data: &'a Sexp) -> i32 {
+    fn add_ref(&mut self, data: &'a Sexp<'a>) -> i32 {
         if let Some(idx) = self
             .data
-            .into_iter()
-            .position(|x| std::ptr::eq(x, data) || x == data)
+            .iter()
+            .position(|x| std::ptr::eq(*x, data) || *x == data)
         {
             return idx as i32;
         }
@@ -63,11 +63,11 @@ impl<'a> RefsTableReader<'a> {
         (self.data.len() - 1) as i32
     }
 
-    fn find(&mut self, data: &'a Sexp) -> Option<i32> {
+    fn find(&mut self, data: &'a Sexp<'a>) -> Option<i32> {
         if let Some(idx) = self
             .data
-            .into_iter()
-            .position(|x| std::ptr::eq(x, data) || x == data)
+            .iter()
+            .position(|x| std::ptr::eq(*x, data) || *x == data)
         {
             Some(idx as i32)
         } else {
@@ -88,7 +88,7 @@ impl<'a> RefsTableReader<'a> {
         (self.data.len() - 1) as i32
     }
 
-    fn update_ref(&mut self, index: i32, data: &'a Sexp) -> bool {
+    fn update_ref(&mut self, index: i32, data: &'a Sexp<'a>) -> bool {
         if index < 0 || index > self.data.len() as i32 {
             false
         } else {
@@ -108,7 +108,7 @@ pub struct RefsTableWriter<'a> {
 }
 
 impl<'a> RefsTableWriter<'a> {
-    fn new(arena: &'a mut Bump) -> Self {
+    fn new(_arena: &'a Bump) -> Self {
         Self {
             data: vec![],
         }
@@ -123,8 +123,8 @@ impl<'a> RefsTableWriter<'a> {
     }
 
     fn add_sym(&mut self, sym: &'a lang::Sym<'a>) -> i32 {
-        if let Some(idx) = self.data.into_iter().position(|x| match x {
-            RefWriter::Sym(x) => std::ptr::eq(x, sym) || x == sym,
+        if let Some(idx) = self.data.iter().position(|x| match x {
+            RefWriter::Sym(x) => std::ptr::eq(*x, sym) || *x == sym,
             RefWriter::NormalEnv(_) => false,
         }) {
             return idx as i32;
@@ -134,8 +134,8 @@ impl<'a> RefsTableWriter<'a> {
     }
 
     fn add_normal_env(&mut self, env: &'a lang::NormalEnv<'a>) -> i32 {
-        if let Some(idx) = self.data.into_iter().position(|x| match x {
-            RefWriter::NormalEnv(x) => std::ptr::eq(x, env) || x == env,
+        if let Some(idx) = self.data.iter().position(|x| match x {
+            RefWriter::NormalEnv(x) => std::ptr::eq(*x, env) || *x == env,
             RefWriter::Sym(_) => false,
         }) {
             return idx as i32;
@@ -144,7 +144,7 @@ impl<'a> RefsTableWriter<'a> {
         (self.data.len() - 1) as i32
     }
 
-    fn find(&mut self, data: &'a Sexp) -> Option<i32> {
+    fn find(&mut self, data: &Sexp<'a>) -> Option<i32> {
         match &data.kind {
             SexpKind::Sym(sym) => self.find_sym(sym),
             SexpKind::Environment(lang::Environment::Normal(env)) => self.find_normal_env(env),
@@ -152,9 +152,9 @@ impl<'a> RefsTableWriter<'a> {
         }
     }
 
-    fn find_sym(&mut self, sym: &'a lang::Sym<'a>) -> Option<i32> {
-        if let Some(idx) = self.data.into_iter().position(|x| match x {
-            RefWriter::Sym(x) => std::ptr::eq(x, sym) || x == sym,
+    fn find_sym(&mut self, sym: &lang::Sym<'a>) -> Option<i32> {
+        if let Some(idx) = self.data.iter().position(|x| match x {
+            RefWriter::Sym(x) => std::ptr::eq(*x, sym) || *x == sym,
             RefWriter::NormalEnv(_) => false,
         }) {
             Some(idx as i32)
@@ -164,8 +164,8 @@ impl<'a> RefsTableWriter<'a> {
     }
 
     fn find_normal_env(&mut self, env: &'a lang::NormalEnv<'a>) -> Option<i32> {
-        if let Some(idx) = self.data.into_iter().position(|x| match x {
-            RefWriter::NormalEnv(x) => std::ptr::eq(x, env) || x == env,
+        if let Some(idx) = self.data.iter().position(|x| match x {
+            RefWriter::NormalEnv(x) => std::ptr::eq(*x, env) || *x == env,
             RefWriter::Sym(_) => false,
         }) {
             Some(idx as i32)

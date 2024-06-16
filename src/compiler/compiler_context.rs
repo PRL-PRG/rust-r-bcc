@@ -1,4 +1,4 @@
-use crate::sexp::sexp::{data, Sexp};
+use crate::sexp::sexp::{data, lang, Sexp};
 
 use super::code_buf::LabelIdx;
 
@@ -10,15 +10,15 @@ pub struct LoopContext {
 }
 
 #[derive(Default, Clone)]
-pub struct CompilerContext {
+pub struct CompilerContext<'a> {
     pub top_level: bool,
     pub need_returnjmp: bool,
     pub tailcall: bool,
     pub loop_ctx: Option<LoopContext>,
-    pub call: Option<Sexp>,
+    pub call: Option<&'a lang::Lang<'a>>,
 }
 
-impl CompilerContext {
+impl<'a> CompilerContext<'a> {
     pub fn new_top(ctxt: &CompilerContext) -> Self {
         Self {
             top_level: true,
@@ -36,9 +36,9 @@ impl CompilerContext {
         }
     }
 
-    pub fn new_call(ctxt: &CompilerContext, call: Sexp) -> Self {
+    pub fn new_call(ctxt: &CompilerContext, call: &'a lang::Lang<'a>) -> Self {
         Self {
-            call: Some(call.clone()),
+            call: Some(call),
             ..ctxt.clone()
         }
     }

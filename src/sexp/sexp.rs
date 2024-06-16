@@ -17,7 +17,7 @@ impl MetaData<'_> {
             if let Sexp {
                 kind: SexpKind::List(list),
                 ..
-            } = *attr
+            } = attr
             {
                 list.into_iter().any(|x| {
                     let x = match x.tag {
@@ -42,7 +42,7 @@ pub struct Sexp<'a> {
 }
 
 impl<'a> From<SexpKind<'a>> for Sexp<'a> {
-    fn from(kind: SexpKind) -> Self {
+    fn from(kind: SexpKind<'a>) -> Self {
         Sexp {
             kind,
             metadata: MetaData { attr: None },
@@ -50,8 +50,8 @@ impl<'a> From<SexpKind<'a>> for Sexp<'a> {
     }
 }
 
-impl Sexp<'_> {
-    pub fn set_attr(&mut self, attr: &Sexp) {
+impl<'a> Sexp<'a> {
+    pub fn set_attr(&'a mut self, attr: &'a Sexp<'a>) {
         self.metadata.attr = Some(attr);
     }
 }
@@ -59,7 +59,7 @@ impl Sexp<'_> {
 pub mod data {
     use std::ops::Deref;
 
-    use super::{Sexp, SexpKind};
+    use super::Sexp;
 
     #[derive(Debug, PartialEq, Clone)]
     pub struct TaggedSexp<'a> {
@@ -68,11 +68,11 @@ pub mod data {
     }
 
     impl<'a> TaggedSexp<'a> {
-        pub fn new(data: &'a Sexp) -> Self {
+        pub fn new(data: &'a Sexp<'a>) -> Self {
             Self { tag: None, data }
         }
 
-        pub fn new_with_tag(data: &'a Sexp, tag: &'a super::lang::Sym<'a>) -> Self {
+        pub fn new_with_tag(data: &'a Sexp<'a>, tag: &'a super::lang::Sym<'a>) -> Self {
             let tag = Some(tag);
             Self { tag, data }
         }
@@ -170,13 +170,13 @@ pub mod lang {
     }
 
     impl<'a> From<Sym<'a>> for Target<'a> {
-        fn from(value: Sym) -> Self {
+        fn from(value: Sym<'a>) -> Self {
             Target::Sym(value)
         }
     }
 
     impl<'a> From<&'a mut Lang<'a>> for Target<'a> {
-        fn from(value: &'a mut Lang) -> Self {
+        fn from(value: &'a mut Lang<'a>) -> Self {
             Target::Lang(value)
         }
     }
@@ -242,7 +242,7 @@ pub mod lang {
     }
 
     impl<'a> Environment<'a> {
-        pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
+        pub fn find_local_var(&'a self, name: &str) -> Option<&super::Sexp> {
             match self {
                 Environment::Global
                 | Environment::Base
@@ -263,10 +263,10 @@ pub mod lang {
 
     impl<'a> NormalEnv<'a> {
         pub fn new(
-            parent: &'a Environment,
+            parent: &'a Environment<'a>,
             locked: bool,
-            frame: ListFrame,
-            hash_frame: HashFrame,
+            frame: ListFrame<'a>,
+            hash_frame: HashFrame<'a>,
         ) -> Self {
             Self {
                 parent,
@@ -276,7 +276,7 @@ pub mod lang {
             }
         }
 
-        pub fn find_local_var(&self, name: &str) -> Option<&super::Sexp> {
+        pub fn find_local_var(&'a self, name: &str) -> Option<&super::Sexp> {
             match self.frame.get(name) {
                 Some(res) => Some(res),
                 None => match self.hash_frame.get(name) {
@@ -286,7 +286,7 @@ pub mod lang {
             }
         }
 
-        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+        pub fn get(&self, _name: &str) -> Option<&super::Sexp> {
             todo!()
         }
     }
@@ -305,7 +305,7 @@ pub mod lang {
     }
 
     impl<'a> ListFrame<'a> {
-        pub fn new(data: super::data::List, arena: &'a mut Alloc<'a>) -> Self {
+        pub fn new(data: super::data::List<'a>, arena: &'a Alloc<'a>) -> Self {
             let mut env = bumpalo::boxed::Box::new_in(HashMap::default(), arena);
             for (index, item) in data.iter().enumerate() {
                 let Some(name) = item.tag.clone() else {
@@ -320,7 +320,7 @@ pub mod lang {
             }
         }
 
-        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+        pub fn get(&'a self, name: &str) -> Option<&super::Sexp> {
             let index = self.env.get(name)?.clone();
             match &self.data {
                 Some(data) => Some(&data[index].data),
@@ -343,7 +343,7 @@ pub mod lang {
     }
 
     impl<'a> HashFrame<'a> {
-        pub fn new(data: &'a [&'a super::Sexp], arena: &'a mut Alloc) -> Self {
+        pub fn new(data: &'a [&'a super::Sexp<'a>], arena: &'a Alloc) -> Self {
             let mut env = bumpalo::boxed::Box::new_in(HashMap::new(), arena);
 
             for (block, item) in data.iter().enumerate() {
@@ -367,7 +367,7 @@ pub mod lang {
             }
         }
 
-        pub fn get(&self, name: &str) -> Option<&super::Sexp> {
+        pub fn get(&'a self, name: &str) -> Option<&super::Sexp> {
             let (block, idx) = self.env.get(name)?.clone();
 
             match &self.data {

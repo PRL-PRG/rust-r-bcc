@@ -2,6 +2,8 @@ use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 
 use self::rds_reader::RDSReader;
 use self::rds_writer::RDSWriter;
+use bumpalo::Bump;
+use crate::sexp::sexp_alloc::Alloc;
 
 use super::*;
 
@@ -12,10 +14,12 @@ macro_rules! test {
             #[test]
             fn reader() {
                 let data : Vec<u8> = vec![$($x,)*];
+                let arena = Bump::new();
+                let arena = Alloc::new(&arena);
 
                 let data = Cursor::new(data);
                 let mut reader = BufReader::new(data);
-                let RDSResult {header: _, data : res} = reader.read_rds().unwrap();
+                let RDSResult {header: _, data : res} = reader.read_rds(&arena).unwrap();
                 insta::assert_debug_snapshot!(res);
             }
 
@@ -23,15 +27,18 @@ macro_rules! test {
             fn writer() {
                 let indata: Vec<u8> = vec![$($x,)*];
 
+                let arena = Bump::new();
+                let arena = Alloc::new(&arena);
+
                 let data = Cursor::new(indata);
                 let mut reader = BufReader::new(data);
-                let input = reader.read_rds().unwrap();
+                let input = reader.read_rds(&arena).unwrap();
 
                 println!("{}", input.data);
 
                 let outdata: Vec<u8> = vec![];
                 let mut writer = BufWriter::new(outdata);
-                writer.write_rds(input.header, input.data).unwrap();
+                writer.write_rds(input.header, input.data, &arena).unwrap();
                 writer.flush().unwrap();
 
                 assert_eq!(writer.get_ref(), reader.get_ref().get_ref());
@@ -356,7 +363,10 @@ macro_rules! testR {
                 assert!(command.wait().unwrap().success());
 
                 let mut file = std::fs::File::open(path).unwrap();
-                let RDSResult { header: _, data } = file.read_rds().unwrap();
+
+                let arena = Bump::new();
+                let arena = Alloc::new(&arena);
+                let RDSResult { header: _, data } = file.read_rds(&arena).unwrap();
 
                 insta::assert_debug_snapshot!(data);
                 std::fs::remove_file(path).unwrap();
@@ -371,7 +381,10 @@ macro_rules! testR {
                 assert!(command.wait().unwrap().success());
             
                 let mut file = std::fs::File::open(path).unwrap();
-                let RDSResult { header, data : input } = file.read_rds().unwrap();
+
+                let arena = Bump::new();
+                let arena = Alloc::new(&arena);
+                let RDSResult { header, data : input } = file.read_rds(&arena).unwrap();
 
                 let mut input_vec = vec![];
                 let mut file = std::fs::File::open(path).unwrap();
@@ -381,7 +394,7 @@ macro_rules! testR {
 
                 let outdata: Vec<u8> = vec![];
                 let mut writer = BufWriter::new(outdata);
-                writer.write_rds(header, input).unwrap();
+                writer.write_rds(header, input, &arena).unwrap();
                 writer.flush().unwrap();
 
                 assert_eq!(writer.get_ref(), &input_vec);

@@ -1,9 +1,70 @@
-use super::sexp::{Sexp, SexpKind};
+use super::sexp::{lang, Sexp, SexpKind};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ConstPoolItem<'a> {
+    Sexp(&'a Sexp<'a>),
+    Sym(&'a lang::Sym<'a>),
+    Lang(&'a lang::Lang<'a>),
+}
+
+impl<'a> PartialEq<lang::Lang<'a>> for ConstPoolItem<'a> {
+    fn eq(&self, other: &lang::Lang<'a>) -> bool {
+        match self {
+            ConstPoolItem::Sexp(_) | ConstPoolItem::Sym(_) => false,
+            ConstPoolItem::Lang(lang) => *lang == other,
+        }
+    }
+}
+
+impl<'a> PartialEq<lang::Sym<'a>> for ConstPoolItem<'a> {
+    fn eq(&self, other: &lang::Sym<'a>) -> bool {
+        match self {
+            ConstPoolItem::Sexp(_) | ConstPoolItem::Lang(_) => false,
+            ConstPoolItem::Sym(sym) => *sym == other,
+        }
+    }
+}
+
+impl<'a> PartialEq<Sexp<'a>> for ConstPoolItem<'a> {
+    fn eq(&self, other: &Sexp<'a>) -> bool {
+        match self {
+            ConstPoolItem::Sym(_) | ConstPoolItem::Lang(_) => false,
+            ConstPoolItem::Sexp(sexp) => *sexp == other,
+        }
+    }
+}
+
+impl<'a> From<&'a Sexp<'a>> for ConstPoolItem<'a> {
+    fn from(value: &'a Sexp<'a>) -> Self {
+        Self::Sexp(value)
+    }
+}
+
+impl<'a> From<&'a lang::Lang<'a>> for ConstPoolItem<'a> {
+    fn from(value: &'a lang::Lang<'a>) -> Self {
+        Self::Lang(value)
+    }
+}
+
+impl<'a> From<&'a lang::Target<'a>> for ConstPoolItem<'a> {
+    fn from(value: &'a lang::Target<'a>) -> Self {
+        match value {
+            lang::Target::Lang(lang) => (*lang).into(),
+            lang::Target::Sym(sym) => sym.into(),
+        }
+    }
+}
+
+impl<'a> From<&'a lang::Sym<'a>> for ConstPoolItem<'a> {
+    fn from(value: &'a lang::Sym<'a>) -> Self {
+        Self::Sym(value)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Bc<'a> {
     pub instructions: &'a [i32],
-    pub constpool: &'a [&'a Sexp<'a>],
+    pub constpool: &'a [ConstPoolItem<'a>],
 }
 
 impl<'a> Into<Sexp<'a>> for Bc<'a> {
@@ -13,7 +74,7 @@ impl<'a> Into<Sexp<'a>> for Bc<'a> {
 }
 
 impl<'a> Bc<'a> {
-    pub fn new(instructions: &'a [i32], constpool: &'a [&'a Sexp<'a>]) -> Self {
+    pub fn new(instructions: &'a [i32], constpool: &'a [ConstPoolItem<'a>]) -> Self {
         Self {
             instructions,
             constpool,
