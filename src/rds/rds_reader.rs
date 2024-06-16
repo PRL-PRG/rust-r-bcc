@@ -36,13 +36,18 @@ impl From<std::string::FromUtf8Error> for RDSReaderError {
     }
 }
 
-pub struct RDSReader<'a, T> where T : Read + Sized {
+pub struct RDSReader<'a, T>
+where
+    T: Read + Sized,
+{
     reader: UnsafeCell<T>,
     arena: &'a Alloc<'a>,
 }
 
-impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
-
+impl<'a, T> RDSReader<'a, T>
+where
+    T: Read + Sized,
+{
     pub fn new(reader: UnsafeCell<T>, arena: &'a Alloc<'a>) -> Self {
         Self { reader, arena }
     }
@@ -130,10 +135,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
         }
     }
 
-    fn read_item(
-        &'a self,
-        refs: &RefsTableReader<'a>,
-    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
+    fn read_item(&'a self, refs: &RefsTableReader<'a>) -> Result<&'a Sexp<'a>, RDSReaderError> {
         let flag = self.read_flags()?;
         self.read_item_flags(refs, flag)
     }
@@ -320,9 +322,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
     }
 
     fn read_intsxp(&'a self) -> Result<&'a Sexp<'a>, RDSReaderError> {
-        Ok(self
-            .arena
-            .alloc(SexpKind::Int(self.read_ints()?).into()))
+        Ok(self.arena.alloc(SexpKind::Int(self.read_ints()?).into()))
     }
 
     fn read_lglsxp(&'a self) -> Result<&'a Sexp<'a>, RDSReaderError> {
@@ -436,10 +436,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
         Ok(Some(self.arena.alloc_str(data.as_str())))
     }
 
-    fn read_symsxp(
-        &'a self,
-        _refs: &RefsTableReader<'a>,
-    ) -> Result<lang::Sym, RDSReaderError> {
+    fn read_symsxp(&'a self, _refs: &RefsTableReader<'a>) -> Result<lang::Sym, RDSReaderError> {
         let _ = self.read_flags()?;
 
         let data = match self.read_string()? {
@@ -466,10 +463,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
         Ok(self.arena.alloc(SexpKind::Char(data).into()))
     }
 
-    fn read_strsxp(
-        &'a self,
-        _refs: &RefsTableReader<'a>,
-    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
+    fn read_strsxp(&'a self, _refs: &RefsTableReader<'a>) -> Result<&'a Sexp<'a>, RDSReaderError> {
         let len = self.read_len()?;
         let data = self.arena.alloc_slice_fill_copy(len, self.arena.na_string);
 
@@ -513,7 +507,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
                     let SexpKind::Sym(sym) = &self.read_refsxp(refs, flag)?.kind else {
                         return Err(RDSReaderError::DataError(format!(
                             "Target needs to be either symbol or lang in ref"
-                        )))
+                        )));
                     };
                     lang::Target::Sym(sym.clone())
                 }
@@ -662,10 +656,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
 
     // This returs Sexp only because I need to check it in
     // the refs table however I should always be NormalEnv
-    fn read_envsxp(
-        &'a self,
-        refs: &RefsTableReader<'a>,
-    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
+    fn read_envsxp(&'a self, refs: &RefsTableReader<'a>) -> Result<&'a Sexp<'a>, RDSReaderError> {
         let locked = self.read_int()?;
 
         // just register ref so my indexes are correct
@@ -732,10 +723,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
         )
     }
 
-    fn read_bc(
-        &'a self,
-        refs: &RefsTableReader<'a>,
-    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
+    fn read_bc(&'a self, refs: &RefsTableReader<'a>) -> Result<&'a Sexp<'a>, RDSReaderError> {
         let reps = self.read_int()?;
         // reps vec is not part of the
         // rds data it is the temp value
@@ -842,7 +830,7 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
         };
         let tag = self.read_item(refs)?;
 
-        let tag = match &tag.kind {
+        let _ = match &tag.kind {
             SexpKind::Sym(sym) => Ok(Some(sym.data)),
             SexpKind::Nil => Ok(None),
             _ => Err(RDSReaderError::DataError("Tag must be sym".into())),
@@ -911,10 +899,14 @@ impl<'a, T> RDSReader<'a, T> where T : Read + Sized {
             };
 
             let type_val = self.read_int()? as u8;
-            if type_val == sexptype::NILSXP || type_val == sexptype::NILVALUE_SXP {
+            if type_val != sexptype::LISTSXP || type_val != sexptype::ATTRLISTSXP {
+
+                /////// HHHHHEREERE YOUU STOPED HERE
+                //data::TaggedSexp::new(car)
+                //res.push(self.read_item(refs)?);
                 break;
             }
-            assert!(type_val == sexptype::LISTSXP || type_val == sexptype::ATTRLISTSXP);
+            //assert!(type_val == sexptype::LISTSXP || type_val == sexptype::ATTRLISTSXP);
 
             res.push(car);
         }
