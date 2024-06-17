@@ -2,11 +2,6 @@ use std::cell::UnsafeCell;
 
 use super::bc::Bc;
 
-pub struct Loc {
-    row: usize,
-    col: usize,
-}
-
 #[derive(Default)]
 pub struct MetaData<'a> {
     pub attr: UnsafeCell<Option<&'a Sexp<'a>>>,
@@ -320,10 +315,6 @@ pub mod lang {
                 },
             }
         }
-
-        pub fn get(&self, _name: &str) -> Option<&super::Sexp> {
-            todo!()
-        }
     }
 
     #[derive(PartialEq)]
@@ -432,6 +423,7 @@ pub mod lang {
 }
 
 // SXP
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum SexpKind<'a> {
     Sym(lang::Sym<'a>),

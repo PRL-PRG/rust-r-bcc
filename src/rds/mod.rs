@@ -65,18 +65,6 @@ impl<'a> RefsTableReader<'a> {
         (arr.len() - 1) as i32
     }
 
-    fn find(&self, data: &'a Sexp<'a>) -> Option<i32> {
-        let arr = unsafe { self.data.get().as_mut().unwrap() };
-        if let Some(idx) = arr
-            .iter()
-            .position(|x| std::ptr::eq(*x, data) || *x == data)
-        {
-            Some(idx as i32)
-        } else {
-            None
-        }
-    }
-
     fn get_ref(&self, index: i32) -> Option<&'a Sexp<'a>> {
         let arr = unsafe { self.data.get().as_mut().unwrap() };
         if index < 0 || index > arr.len() as i32 {

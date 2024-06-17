@@ -1,7 +1,5 @@
 use std::{
-    collections::HashSet,
-    io::Write,
-    net::{Shutdown, TcpListener, TcpStream},
+    cell::UnsafeCell, collections::HashSet, io::Write, net::{Shutdown, TcpListener, TcpStream}
 };
 
 use bumpalo::Bump;
@@ -28,28 +26,29 @@ impl<'a> RDSWriter<'a> for TcpStream {}
 
 fn handle_conn(stream: TcpStream) {
     println!("handle start");
-    /*let mut stream = stream;
+    let stream = stream;
 
-    let mut arena = Bump::new();
-    let mut arena = Alloc::new(&mut arena);
+    let arena = Bump::new();
+    let arena = Alloc::new(&arena);
+    let stream = RDSReader::new(UnsafeCell::new(stream), &arena);
 
-    let RDSResult { header, data } = stream.read_rds(&arena).unwrap();
+    let RDSResult { header, data } = stream.read_rds().unwrap();
 
     let SexpKind::Vec(data) = data.kind else {
         panic!()
     };
     let data = data;
 
-    let SexpKind::Closure(closure) = data[0].kind else {
+    let SexpKind::Closure(closure) = &data[0].kind else {
         panic!()
     };
-    let options: CompilerOptions = match data[1].kind {
+    let options: CompilerOptions = match &data[1].kind {
         SexpKind::Nil => CompilerOptions::default(),
         SexpKind::List(list) => {
             let inlining = list
                 .into_iter()
                 .find(|x| x.tag.is_some_and(|x| x.data == "optimize"))
-                .map(|x| x.data.kind);
+                .map(|x| &x.data.kind);
             if let Some(SexpKind::Real(num)) = inlining {
                 if num.len() != 1 {
                     CompilerOptions::default()
@@ -84,11 +83,11 @@ fn handle_conn(stream: TcpStream) {
         println!("{}", data[4]);
     }
 
-    let mut compiler = Compiler::new_options(options.inline_level, &mut arena);
+    let mut compiler = Compiler::new_options(options.inline_level, &arena);
     if data.len() == 3 {
-        let a = data[2].kind;
-        let b = data[3].kind;
-        let c = data[4].kind;
+        let a = &data[2].kind;
+        let b = &data[3].kind;
+        let c = &data[4].kind;
         println!("b : {b} \nc : {c}");
         let (baseenv, builtins, specials) = match (a, b, c) {
             (
@@ -107,8 +106,11 @@ fn handle_conn(stream: TcpStream) {
 
     println!("output");
     println!("{res}\n");
+    let header = header.clone();
 
-    stream.write_rds(header, res, &mut arena).unwrap();
+    let mut stream = stream.restore();
+
+    stream.write_rds(header.clone(), res, &arena).unwrap();
     stream.flush().unwrap();
-    stream.shutdown(Shutdown::Write).unwrap();*/
+    stream.shutdown(Shutdown::Write).unwrap();
 }

@@ -1,5 +1,4 @@
 use std::cell::UnsafeCell;
-use std::io::BufReader;
 
 use std::io::Read;
 
@@ -20,7 +19,7 @@ use super::RefsTableReader;
 #[derive(Debug)]
 pub enum RDSReaderError {
     DataError(String),
-    WrongFlag(i32),
+    //WrongFlag(i32),
     IO(std::io::Error),
 }
 
@@ -50,6 +49,10 @@ where
 {
     pub fn new(reader: UnsafeCell<T>, arena: &'a Alloc<'a>) -> Self {
         Self { reader, arena }
+    }
+
+    pub fn restore(self) -> T {
+        self.reader.into_inner()
     }
 
     pub fn read_rds(&'a self) -> Result<RDSResult, RDSReaderError> {
@@ -140,14 +143,6 @@ where
         self.read_item_flags(refs, flag)
     }
 
-    fn lookup_class(
-        &self,
-        _class_sym: &str,
-        _package_sym: &str,
-    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
-        todo!()
-    }
-
     fn read_item_flags(
         &'a self,
         refs: &RefsTableReader<'a>,
@@ -193,8 +188,8 @@ where
             }
             sexptype::ALTREP_SXP => {
                 let info = self.read_item(refs)?;
-                let state = self.read_item(refs)?;
-                let attr = self.read_item(refs)?;
+                let _state = self.read_item(refs)?;
+                let _attr = self.read_item(refs)?;
                 let info = match info.kind {
                     SexpKind::List(list) if list.len() == 3 => list,
                     _ => {
@@ -203,14 +198,14 @@ where
                         ))
                     }
                 };
-                let class_sym = &info[0];
-                let package_sym = &info[1];
+                let _class_sym = &info[0];
+                let _package_sym = &info[1];
                 let SexpKind::Int(class_type) = &info[2].data.kind else {
                     return Err(RDSReaderError::DataError(
                         "Wrong class type in info for ALTREP".into(),
                     ));
                 };
-                let class_type = if class_type.len() == 1 {
+                let _class_type = if class_type.len() == 1 {
                     class_type[0]
                 } else {
                     return Err(RDSReaderError::DataError(
@@ -537,7 +532,7 @@ where
         };
 
         let res = lang::Lang::new(target, args);
-        if let Some(attr) = attr {
+        if let Some(_) = attr {
             todo!();
             //res.set_attr(attr);
         }
@@ -815,7 +810,7 @@ where
         refs: &RefsTableReader<'a>,
         reps: &mut Vec<&'a Sexp<'a>>,
     ) -> Result<&'a Sexp<'a>, RDSReaderError> {
-        let (type_orig, has_attr) = match type_val {
+        let (_, has_attr) = match type_val {
             sexptype::ATTRLANGSXP => (sexptype::LANGSXP, true),
             sexptype::LANGSXP => (type_val, false),
             // here should be panic since this is only for
@@ -823,7 +818,7 @@ where
             _ => panic!("Unexpected type_orig in read_bclang_langsxp"),
         };
 
-        let attr = if has_attr {
+        let _attr = if has_attr {
             Some(self.read_item(refs)?)
         } else {
             None
@@ -869,7 +864,7 @@ where
     ) -> Result<&'a Sexp<'a>, RDSReaderError> {
         let mut res = vec![];
         loop {
-            let (type_orig, has_attr) = match type_val {
+            let (_, has_attr) = match type_val {
                 sexptype::ATTRLISTSXP => (sexptype::LISTSXP, true),
                 sexptype::LISTSXP => (type_val, false),
                 // same as in the previous function
@@ -877,7 +872,7 @@ where
                 _ => panic!("Unexpected type_orig in read_bclang_list"),
             };
 
-            let attr = if has_attr {
+            let _attr = if has_attr {
                 Some(self.read_item(refs)?)
             } else {
                 None
@@ -936,7 +931,7 @@ where
         flags: Flag,
         refs: &RefsTableReader<'a>,
     ) -> Result<&'a Sexp<'a>, RDSReaderError> {
-        let attr = if flags.has_attributes {
+        let _attr = if flags.has_attributes {
             Some(self.read_item(refs)?)
         } else {
             None

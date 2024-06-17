@@ -76,6 +76,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_options(inline_level: usize, arena: &'a Alloc<'a>) -> Self {
         Self {
             options: CompilerOptions { inline_level },
@@ -99,10 +100,6 @@ impl<'a> Compiler<'a> {
 
     pub fn set_baseenv(&mut self, env: &'a lang::NormalEnv<'a>) {
         self.baseenv = Some(env);
-    }
-
-    pub fn set_namespacebase(&mut self, env: &'a lang::NormalEnv<'a>) {
-        self.namespacebase = Some(env);
     }
 
     pub fn cmpfun(&mut self, closure: &lang::Closure<'a>) -> lang::Closure<'a> {
@@ -1364,6 +1361,7 @@ impl Default for CompilerOptions {
 }
 
 impl CompilerOptions {
+    #[allow(dead_code)]
     pub fn new(inline_level: usize) -> Self {
         Self { inline_level }
     }

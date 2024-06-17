@@ -33,7 +33,7 @@ pub struct CodeBuffer<'a> {
 impl<'a> CodeBuffer<'a> {
     pub fn new() -> Self {
         Self {
-            instructions: vec![12],
+            instructions: vec![Bc::version()],
             constpool: vec![],
             current_expr: None,
             expression_buffer: vec![NA], // first instruction is version and does not have a source
@@ -43,7 +43,7 @@ impl<'a> CodeBuffer<'a> {
 
     pub fn new_with_expr(curr_expr: ConstPoolItem<'a>) -> Self {
         Self {
-            instructions: vec![12],
+            instructions: vec![Bc::version()],
             constpool: vec![],
             current_expr: Some(curr_expr),
             expression_buffer: vec![NA], // first instruction is version and does not have a source
@@ -98,7 +98,7 @@ impl<'a> CodeBuffer<'a> {
         }
     }
 
-    pub fn add_const_lang(&mut self, val : &'a lang::Lang<'a>) -> i32 {
+    pub fn add_const_lang(&mut self, val: &'a lang::Lang<'a>) -> i32 {
         match self.constpool.iter().position(|x| x == val) {
             Some(idx) => idx as i32,
             None => {
@@ -108,7 +108,7 @@ impl<'a> CodeBuffer<'a> {
         }
     }
 
-    pub fn add_const_sym(&mut self, val : &'a lang::Sym<'a>) -> i32 {
+    pub fn add_const_sym(&mut self, val: &'a lang::Sym<'a>) -> i32 {
         match self.constpool.iter().position(|x| x == val) {
             Some(idx) => idx as i32,
             None => {
@@ -117,7 +117,6 @@ impl<'a> CodeBuffer<'a> {
             }
         }
     }
-
 
     pub fn set_current_expr(&mut self, sexp: ConstPoolItem<'a>) -> Option<ConstPoolItem<'a>> {
         std::mem::replace(&mut self.current_expr, Some(sexp))

@@ -100,7 +100,7 @@ impl<'a> Bc<'a> {
     }
 
     // this is needed as a first instuction in bc
-    fn version() -> i32 {
+    pub fn version() -> i32 {
         12
     }
 }

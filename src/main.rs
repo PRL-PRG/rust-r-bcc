@@ -134,7 +134,7 @@ fn bench() {
     let mut correct = 0;
     let all = orig.hash_frame.env.len();
     let mut compiler = Compiler::new(&arena);
-    compiler.set_baseenv(env.clone());
+    compiler.set_baseenv(env);
     compiler.builtins = HashSet::from_iter(builtins.to_vec().into_iter());
     compiler.specials = HashSet::from_iter(specials.to_vec().into_iter());
     compiler.internals = HashSet::from_iter(internals.to_vec().into_iter());

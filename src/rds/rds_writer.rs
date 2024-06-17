@@ -387,7 +387,15 @@ pub trait RDSWriter<'a>: Write {
 
         match &lang.target {
             lang::Target::Lang(lang) => {
-                self.write_bclang(lang, arena.empty_metadata, refs, reps, reps_count, reps_visit, arena)?;
+                self.write_bclang(
+                    lang,
+                    arena.empty_metadata,
+                    refs,
+                    reps,
+                    reps_count,
+                    reps_visit,
+                    arena,
+                )?;
             }
             lang::Target::Sym(sym) => {
                 // padding dont ask why
@@ -740,7 +748,7 @@ pub trait RDSWriter<'a>: Write {
     }
 }
 
-enum RepsItem<'a> {
+pub(crate) enum RepsItem<'a> {
     Placeholder,
     Lang(&'a lang::Lang<'a>),
     List(&'a data::List<'a>),

@@ -18,6 +18,7 @@ pub struct CompilerContext<'a> {
     pub call: Option<&'a lang::Lang<'a>>,
 }
 
+#[allow(dead_code)]
 impl<'a> CompilerContext<'a> {
     pub fn new_top(ctxt: &CompilerContext) -> Self {
         Self {
