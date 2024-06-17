@@ -998,24 +998,26 @@ impl<'a> Compiler<'a> {
                 _ => self.cmp_special(expr),
             },
             "local" if expr.args.len() == 1 => {
-                false
-                /*
                 let fun_sym = lang::Sym::new("function".into());
                 let fun_sym: lang::Target = fun_sym.into();
-                let lang = lang::Lang::new(
-                    fun_sym,
-                    vec![
-                        SexpKind::Nil.into(),
-                        expr.args[0].clone(),
-                        SexpKind::Nil.into(),
-                    ],
-                );
-                let target: lang::Target = lang.into();
-                let lang = lang::Lang::new(target, vec![]);
+                let data = self.arena.alloc_slice_clone(&[
+                    data::TaggedSexp::new(self.arena.nil),
+                    expr.args[0].clone(),
+                    data::TaggedSexp::new(self.arena.nil),
+                ]);
+                let args = data::List {data};
+                let lang = self.arena.alloc(lang::Lang::new(fun_sym, args));
+                let target: lang::Target = lang::Target::Lang(lang);
+                let lang = self.arena.alloc(lang::Lang::new(target, self.arena.nil_list));
 
-                self.cmp(&lang.into(), false, true);
+                // before
+                // self.cmp(&lang.into(), false, true);
 
-                true*/
+                let orig = self.code_buffer.set_current_expr(ConstPoolItem::Lang(lang));
+                self.cmp_call(lang, true);
+                self.code_buffer.restore_current_expr(orig);
+
+                true
             }
             "is.character" => self.cmp_is(BcOp::ISCHARACTER_OP, expr),
             "is.complex" => self.cmp_is(BcOp::ISCOMPLEX_OP, expr),

@@ -164,6 +164,12 @@ fn bench() {
 
         if &res == corr_closure {
             correct += 1;
+        } else {
+            println!("fail {key}");
+            if *key == ".row" {
+                println!("My compilation:\n{res}\n");
+                println!("Correct compilation:\n{corr_closure}");
+            }
         }
     }
 
