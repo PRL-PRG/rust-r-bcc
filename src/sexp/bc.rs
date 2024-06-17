@@ -46,7 +46,14 @@ impl<'a> PartialEq<lang::Sym<'a>> for ConstPoolItem<'a> {
 impl<'a> PartialEq<Sexp<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &Sexp<'a>) -> bool {
         match self {
-            ConstPoolItem::Sym(_) | ConstPoolItem::Lang(_) => false,
+            ConstPoolItem::Sym(sym) => match &other.kind {
+                SexpKind::Sym(other_sym) => *sym == other_sym,
+                _ => false,
+            },
+            ConstPoolItem::Lang(lang) => match &other.kind {
+                SexpKind::Lang(other_lang) => *lang == other_lang,
+                _ => false,
+            },
             ConstPoolItem::Sexp(sexp) => *sexp == other,
         }
     }

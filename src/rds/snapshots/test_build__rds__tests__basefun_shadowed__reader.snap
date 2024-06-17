@@ -12,9 +12,7 @@ Sexp {
                     },
                     value: Sexp {
                         kind: MissingArg,
-                        metadata: MetaData {
-                            attr: None,
-                        },
+                        metadata: MetaData { attr: None },
                     },
                 },
             ],
@@ -62,9 +60,7 @@ Sexp {
                                                                                 data: "list",
                                                                             },
                                                                         ),
-                                                                        metadata: MetaData {
-                                                                            attr: None,
-                                                                        },
+                                                                        metadata: MetaData { attr: None },
                                                                     },
                                                                 },
                                                                 TaggedSexp {
@@ -85,20 +81,18 @@ Sexp {
                                                                                                 [
                                                                                                     TaggedSexp {
                                                                                                         tag: Some(
-                                                                                                            "...",
+                                                                                                            Sym {
+                                                                                                                data: "...",
+                                                                                                            },
                                                                                                         ),
                                                                                                         data: Sexp {
                                                                                                             kind: MissingArg,
-                                                                                                            metadata: MetaData {
-                                                                                                                attr: None,
-                                                                                                            },
+                                                                                                            metadata: MetaData { attr: None },
                                                                                                         },
                                                                                                     },
                                                                                                 ],
                                                                                             ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                                            metadata: MetaData { attr: None },
                                                                                         },
                                                                                     },
                                                                                     TaggedSexp {
@@ -120,42 +114,32 @@ Sexp {
                                                                                                                         1.0,
                                                                                                                     ],
                                                                                                                 ),
-                                                                                                                metadata: MetaData {
-                                                                                                                    attr: None,
-                                                                                                                },
+                                                                                                                metadata: MetaData { attr: None },
                                                                                                             },
                                                                                                         },
                                                                                                     ],
                                                                                                 },
                                                                                             ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                                            metadata: MetaData { attr: None },
                                                                                         },
                                                                                     },
                                                                                     TaggedSexp {
                                                                                         tag: None,
                                                                                         data: Sexp {
                                                                                             kind: Nil,
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                                            metadata: MetaData { attr: None },
                                                                                         },
                                                                                     },
                                                                                 ],
                                                                             },
                                                                         ),
-                                                                        metadata: MetaData {
-                                                                            attr: None,
-                                                                        },
+                                                                        metadata: MetaData { attr: None },
                                                                     },
                                                                 },
                                                             ],
                                                         },
                                                     ),
-                                                    metadata: MetaData {
-                                                        attr: None,
-                                                    },
+                                                    metadata: MetaData { attr: None },
                                                 },
                                             },
                                             TaggedSexp {
@@ -177,25 +161,19 @@ Sexp {
                                                                                 data: "x",
                                                                             },
                                                                         ),
-                                                                        metadata: MetaData {
-                                                                            attr: None,
-                                                                        },
+                                                                        metadata: MetaData { attr: None },
                                                                     },
                                                                 },
                                                             ],
                                                         },
                                                     ),
-                                                    metadata: MetaData {
-                                                        attr: None,
-                                                    },
+                                                    metadata: MetaData { attr: None },
                                                 },
                                             },
                                         ],
                                     },
                                 ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+                                metadata: MetaData { attr: None },
                             },
                             Sexp {
                                 kind: Sym(
@@ -203,9 +181,7 @@ Sexp {
                                         data: "{",
                                     },
                                 ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+                                metadata: MetaData { attr: None },
                             },
                             Sexp {
                                 kind: Bc(
@@ -240,9 +216,7 @@ Sexp {
                                                                             data: "list",
                                                                         },
                                                                     ),
-                                                                    metadata: MetaData {
-                                                                        attr: None,
-                                                                    },
+                                                                    metadata: MetaData { attr: None },
                                                                 },
                                                             },
                                                             TaggedSexp {
@@ -263,20 +237,18 @@ Sexp {
                                                                                             [
                                                                                                 TaggedSexp {
                                                                                                     tag: Some(
-                                                                                                        "...",
+                                                                                                        Sym {
+                                                                                                            data: "...",
+                                                                                                        },
                                                                                                     ),
                                                                                                     data: Sexp {
                                                                                                         kind: MissingArg,
-                                                                                                        metadata: MetaData {
-                                                                                                            attr: None,
-                                                                                                        },
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
                                                                                                 },
                                                                                             ],
                                                                                         ),
-                                                                                        metadata: MetaData {
-                                                                                            attr: None,
-                                                                                        },
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
                                                                                 },
                                                                                 TaggedSexp {
@@ -298,42 +270,32 @@ Sexp {
                                                                                                                     1.0,
                                                                                                                 ],
                                                                                                             ),
-                                                                                                            metadata: MetaData {
-                                                                                                                attr: None,
-                                                                                                            },
+                                                                                                            metadata: MetaData { attr: None },
                                                                                                         },
                                                                                                     },
                                                                                                 ],
                                                                                             },
                                                                                         ),
-                                                                                        metadata: MetaData {
-                                                                                            attr: None,
-                                                                                        },
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
                                                                                 },
                                                                                 TaggedSexp {
                                                                                     tag: None,
                                                                                     data: Sexp {
                                                                                         kind: Nil,
-                                                                                        metadata: MetaData {
-                                                                                            attr: None,
-                                                                                        },
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
                                                                                 },
                                                                             ],
                                                                         },
                                                                     ),
-                                                                    metadata: MetaData {
-                                                                        attr: None,
-                                                                    },
+                                                                    metadata: MetaData { attr: None },
                                                                 },
                                                             },
                                                         ],
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Sym(
@@ -341,9 +303,7 @@ Sexp {
                                                         data: "<-",
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Bc(
@@ -361,9 +321,7 @@ Sexp {
                                                                         data: "list",
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Lang(
@@ -382,9 +340,7 @@ Sexp {
                                                                                             data: "list",
                                                                                         },
                                                                                     ),
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                             TaggedSexp {
@@ -405,20 +361,18 @@ Sexp {
                                                                                                             [
                                                                                                                 TaggedSexp {
                                                                                                                     tag: Some(
-                                                                                                                        "...",
+                                                                                                                        Sym {
+                                                                                                                            data: "...",
+                                                                                                                        },
                                                                                                                     ),
                                                                                                                     data: Sexp {
                                                                                                                         kind: MissingArg,
-                                                                                                                        metadata: MetaData {
-                                                                                                                            attr: None,
-                                                                                                                        },
+                                                                                                                        metadata: MetaData { attr: None },
                                                                                                                     },
                                                                                                                 },
                                                                                                             ],
                                                                                                         ),
-                                                                                                        metadata: MetaData {
-                                                                                                            attr: None,
-                                                                                                        },
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
                                                                                                 },
                                                                                                 TaggedSexp {
@@ -440,42 +394,32 @@ Sexp {
                                                                                                                                     1.0,
                                                                                                                                 ],
                                                                                                                             ),
-                                                                                                                            metadata: MetaData {
-                                                                                                                                attr: None,
-                                                                                                                            },
+                                                                                                                            metadata: MetaData { attr: None },
                                                                                                                         },
                                                                                                                     },
                                                                                                                 ],
                                                                                                             },
                                                                                                         ),
-                                                                                                        metadata: MetaData {
-                                                                                                            attr: None,
-                                                                                                        },
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
                                                                                                 },
                                                                                                 TaggedSexp {
                                                                                                     tag: None,
                                                                                                     data: Sexp {
                                                                                                         kind: Nil,
-                                                                                                        metadata: MetaData {
-                                                                                                            attr: None,
-                                                                                                        },
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
                                                                                                 },
                                                                                             ],
                                                                                         },
                                                                                     ),
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                         ],
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Int(
@@ -486,41 +430,35 @@ Sexp {
                                                                         1,
                                                                     ],
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: Some(
-                                                                        Sexp {
-                                                                            kind: List(
-                                                                                [
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "class",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "expressionsIndex",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                metadata: MetaData { attr: Some(
+                                                                    Sexp {
+                                                                        kind: List(
+                                                                            [
+                                                                                TaggedSexp {
+                                                                                    tag: Some(
+                                                                                        Sym {
+                                                                                            data: "class",
                                                                                         },
+                                                                                    ),
+                                                                                    data: Sexp {
+                                                                                        kind: Str(
+                                                                                            [
+                                                                                                "expressionsIndex",
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
-                                                                                ],
-                                                                            ),
-                                                                            metadata: MetaData {
-                                                                                attr: None,
-                                                                            },
-                                                                        },
-                                                                    ),
-                                                                },
+                                                                                },
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
+                                                                    },
+                                                                ) },
                                                             },
                                                         ],
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Bc(
@@ -555,20 +493,18 @@ Sexp {
                                                                                         [
                                                                                             TaggedSexp {
                                                                                                 tag: Some(
-                                                                                                    "...",
+                                                                                                    Sym {
+                                                                                                        data: "...",
+                                                                                                    },
                                                                                                 ),
                                                                                                 data: Sexp {
                                                                                                     kind: MissingArg,
-                                                                                                    metadata: MetaData {
-                                                                                                        attr: None,
-                                                                                                    },
+                                                                                                    metadata: MetaData { attr: None },
                                                                                                 },
                                                                                             },
                                                                                         ],
                                                                                     ),
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                             TaggedSexp {
@@ -590,34 +526,26 @@ Sexp {
                                                                                                                 1.0,
                                                                                                             ],
                                                                                                         ),
-                                                                                                        metadata: MetaData {
-                                                                                                            attr: None,
-                                                                                                        },
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
                                                                                                 },
                                                                                             ],
                                                                                         },
                                                                                     ),
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                             TaggedSexp {
                                                                                 tag: None,
                                                                                 data: Sexp {
                                                                                     kind: Nil,
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                         ],
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Sym(
@@ -625,29 +553,25 @@ Sexp {
                                                                         data: "function",
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: List(
                                                                     [
                                                                         TaggedSexp {
                                                                             tag: Some(
-                                                                                "...",
+                                                                                Sym {
+                                                                                    data: "...",
+                                                                                },
                                                                             ),
                                                                             data: Sexp {
                                                                                 kind: MissingArg,
-                                                                                metadata: MetaData {
-                                                                                    attr: None,
-                                                                                },
+                                                                                metadata: MetaData { attr: None },
                                                                             },
                                                                         },
                                                                     ],
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Bc(
@@ -680,17 +604,13 @@ Sexp {
                                                                                                             1.0,
                                                                                                         ],
                                                                                                     ),
-                                                                                                    metadata: MetaData {
-                                                                                                        attr: None,
-                                                                                                    },
+                                                                                                    metadata: MetaData { attr: None },
                                                                                                 },
                                                                                             },
                                                                                         ],
                                                                                     },
                                                                                 ),
-                                                                                metadata: MetaData {
-                                                                                    attr: None,
-                                                                                },
+                                                                                metadata: MetaData { attr: None },
                                                                             },
                                                                             Sexp {
                                                                                 kind: Sym(
@@ -698,9 +618,7 @@ Sexp {
                                                                                         data: "print",
                                                                                     },
                                                                                 ),
-                                                                                metadata: MetaData {
-                                                                                    attr: None,
-                                                                                },
+                                                                                metadata: MetaData { attr: None },
                                                                             },
                                                                             Sexp {
                                                                                 kind: Real(
@@ -708,9 +626,7 @@ Sexp {
                                                                                         1.0,
                                                                                     ],
                                                                                 ),
-                                                                                metadata: MetaData {
-                                                                                    attr: None,
-                                                                                },
+                                                                                metadata: MetaData { attr: None },
                                                                             },
                                                                             Sexp {
                                                                                 kind: Int(
@@ -725,41 +641,35 @@ Sexp {
                                                                                         0,
                                                                                     ],
                                                                                 ),
-                                                                                metadata: MetaData {
-                                                                                    attr: Some(
-                                                                                        Sexp {
-                                                                                            kind: List(
-                                                                                                [
-                                                                                                    TaggedSexp {
-                                                                                                        tag: Some(
-                                                                                                            "class",
-                                                                                                        ),
-                                                                                                        data: Sexp {
-                                                                                                            kind: Str(
-                                                                                                                [
-                                                                                                                    "expressionsIndex",
-                                                                                                                ],
-                                                                                                            ),
-                                                                                                            metadata: MetaData {
-                                                                                                                attr: None,
-                                                                                                            },
+                                                                                metadata: MetaData { attr: Some(
+                                                                                    Sexp {
+                                                                                        kind: List(
+                                                                                            [
+                                                                                                TaggedSexp {
+                                                                                                    tag: Some(
+                                                                                                        Sym {
+                                                                                                            data: "class",
                                                                                                         },
+                                                                                                    ),
+                                                                                                    data: Sexp {
+                                                                                                        kind: Str(
+                                                                                                            [
+                                                                                                                "expressionsIndex",
+                                                                                                            ],
+                                                                                                        ),
+                                                                                                        metadata: MetaData { attr: None },
                                                                                                     },
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
-                                                                                        },
-                                                                                    ),
-                                                                                },
+                                                                                                },
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData { attr: None },
+                                                                                    },
+                                                                                ) },
                                                                             },
                                                                         ],
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Int(
@@ -777,41 +687,35 @@ Sexp {
                                                                         0,
                                                                     ],
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: Some(
-                                                                        Sexp {
-                                                                            kind: List(
-                                                                                [
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "class",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "expressionsIndex",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                metadata: MetaData { attr: Some(
+                                                                    Sexp {
+                                                                        kind: List(
+                                                                            [
+                                                                                TaggedSexp {
+                                                                                    tag: Some(
+                                                                                        Sym {
+                                                                                            data: "class",
                                                                                         },
+                                                                                    ),
+                                                                                    data: Sexp {
+                                                                                        kind: Str(
+                                                                                            [
+                                                                                                "expressionsIndex",
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
-                                                                                ],
-                                                                            ),
-                                                                            metadata: MetaData {
-                                                                                attr: None,
-                                                                            },
-                                                                        },
-                                                                    ),
-                                                                },
+                                                                                },
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
+                                                                    },
+                                                                ) },
                                                             },
                                                         ],
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Int(
@@ -828,41 +732,35 @@ Sexp {
                                                         0,
                                                     ],
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: Some(
-                                                        Sexp {
-                                                            kind: List(
-                                                                [
-                                                                    TaggedSexp {
-                                                                        tag: Some(
-                                                                            "class",
-                                                                        ),
-                                                                        data: Sexp {
-                                                                            kind: Str(
-                                                                                [
-                                                                                    "expressionsIndex",
-                                                                                ],
-                                                                            ),
-                                                                            metadata: MetaData {
-                                                                                attr: None,
-                                                                            },
+                                                metadata: MetaData { attr: Some(
+                                                    Sexp {
+                                                        kind: List(
+                                                            [
+                                                                TaggedSexp {
+                                                                    tag: Some(
+                                                                        Sym {
+                                                                            data: "class",
                                                                         },
+                                                                    ),
+                                                                    data: Sexp {
+                                                                        kind: Str(
+                                                                            [
+                                                                                "expressionsIndex",
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
                                                                     },
-                                                                ],
-                                                            ),
-                                                            metadata: MetaData {
-                                                                attr: None,
-                                                            },
-                                                        },
-                                                    ),
-                                                },
+                                                                },
+                                                            ],
+                                                        ),
+                                                        metadata: MetaData { attr: None },
+                                                    },
+                                                ) },
                                             },
                                         ],
                                     },
                                 ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+                                metadata: MetaData { attr: None },
                             },
                             Sexp {
                                 kind: Bc(
@@ -895,17 +793,13 @@ Sexp {
                                                                             data: "x",
                                                                         },
                                                                     ),
-                                                                    metadata: MetaData {
-                                                                        attr: None,
-                                                                    },
+                                                                    metadata: MetaData { attr: None },
                                                                 },
                                                             },
                                                         ],
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Sym(
@@ -913,9 +807,7 @@ Sexp {
                                                         data: "list",
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Bc(
@@ -933,9 +825,7 @@ Sexp {
                                                                         data: "x",
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Lang(
@@ -954,17 +844,13 @@ Sexp {
                                                                                             data: "x",
                                                                                         },
                                                                                     ),
-                                                                                    metadata: MetaData {
-                                                                                        attr: None,
-                                                                                    },
+                                                                                    metadata: MetaData { attr: None },
                                                                                 },
                                                                             },
                                                                         ],
                                                                     },
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: None,
-                                                                },
+                                                                metadata: MetaData { attr: None },
                                                             },
                                                             Sexp {
                                                                 kind: Int(
@@ -975,41 +861,35 @@ Sexp {
                                                                         1,
                                                                     ],
                                                                 ),
-                                                                metadata: MetaData {
-                                                                    attr: Some(
-                                                                        Sexp {
-                                                                            kind: List(
-                                                                                [
-                                                                                    TaggedSexp {
-                                                                                        tag: Some(
-                                                                                            "class",
-                                                                                        ),
-                                                                                        data: Sexp {
-                                                                                            kind: Str(
-                                                                                                [
-                                                                                                    "expressionsIndex",
-                                                                                                ],
-                                                                                            ),
-                                                                                            metadata: MetaData {
-                                                                                                attr: None,
-                                                                                            },
+                                                                metadata: MetaData { attr: Some(
+                                                                    Sexp {
+                                                                        kind: List(
+                                                                            [
+                                                                                TaggedSexp {
+                                                                                    tag: Some(
+                                                                                        Sym {
+                                                                                            data: "class",
                                                                                         },
+                                                                                    ),
+                                                                                    data: Sexp {
+                                                                                        kind: Str(
+                                                                                            [
+                                                                                                "expressionsIndex",
+                                                                                            ],
+                                                                                        ),
+                                                                                        metadata: MetaData { attr: None },
                                                                                     },
-                                                                                ],
-                                                                            ),
-                                                                            metadata: MetaData {
-                                                                                attr: None,
-                                                                            },
-                                                                        },
-                                                                    ),
-                                                                },
+                                                                                },
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
+                                                                    },
+                                                                ) },
                                                             },
                                                         ],
                                                     },
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: None,
-                                                },
+                                                metadata: MetaData { attr: None },
                                             },
                                             Sexp {
                                                 kind: Int(
@@ -1024,41 +904,35 @@ Sexp {
                                                         0,
                                                     ],
                                                 ),
-                                                metadata: MetaData {
-                                                    attr: Some(
-                                                        Sexp {
-                                                            kind: List(
-                                                                [
-                                                                    TaggedSexp {
-                                                                        tag: Some(
-                                                                            "class",
-                                                                        ),
-                                                                        data: Sexp {
-                                                                            kind: Str(
-                                                                                [
-                                                                                    "expressionsIndex",
-                                                                                ],
-                                                                            ),
-                                                                            metadata: MetaData {
-                                                                                attr: None,
-                                                                            },
+                                                metadata: MetaData { attr: Some(
+                                                    Sexp {
+                                                        kind: List(
+                                                            [
+                                                                TaggedSexp {
+                                                                    tag: Some(
+                                                                        Sym {
+                                                                            data: "class",
                                                                         },
+                                                                    ),
+                                                                    data: Sexp {
+                                                                        kind: Str(
+                                                                            [
+                                                                                "expressionsIndex",
+                                                                            ],
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
                                                                     },
-                                                                ],
-                                                            ),
-                                                            metadata: MetaData {
-                                                                attr: None,
-                                                            },
-                                                        },
-                                                    ),
-                                                },
+                                                                },
+                                                            ],
+                                                        ),
+                                                        metadata: MetaData { attr: None },
+                                                    },
+                                                ) },
                                             },
                                         ],
                                     },
                                 ),
-                                metadata: MetaData {
-                                    attr: None,
-                                },
+                                metadata: MetaData { attr: None },
                             },
                             Sexp {
                                 kind: Int(
@@ -1075,46 +949,38 @@ Sexp {
                                         0,
                                     ],
                                 ),
-                                metadata: MetaData {
-                                    attr: Some(
-                                        Sexp {
-                                            kind: List(
-                                                [
-                                                    TaggedSexp {
-                                                        tag: Some(
-                                                            "class",
-                                                        ),
-                                                        data: Sexp {
-                                                            kind: Str(
-                                                                [
-                                                                    "expressionsIndex",
-                                                                ],
-                                                            ),
-                                                            metadata: MetaData {
-                                                                attr: None,
-                                                            },
+                                metadata: MetaData { attr: Some(
+                                    Sexp {
+                                        kind: List(
+                                            [
+                                                TaggedSexp {
+                                                    tag: Some(
+                                                        Sym {
+                                                            data: "class",
                                                         },
+                                                    ),
+                                                    data: Sexp {
+                                                        kind: Str(
+                                                            [
+                                                                "expressionsIndex",
+                                                            ],
+                                                        ),
+                                                        metadata: MetaData { attr: None },
                                                     },
-                                                ],
-                                            ),
-                                            metadata: MetaData {
-                                                attr: None,
-                                            },
-                                        },
-                                    ),
-                                },
+                                                },
+                                            ],
+                                        ),
+                                        metadata: MetaData { attr: None },
+                                    },
+                                ) },
                             },
                         ],
                     },
                 ),
-                metadata: MetaData {
-                    attr: None,
-                },
+                metadata: MetaData { attr: None },
             },
             environment: Global,
         },
     ),
-    metadata: MetaData {
-        attr: None,
-    },
+    metadata: MetaData { attr: None },
 }
