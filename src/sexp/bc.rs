@@ -28,7 +28,11 @@ impl std::fmt::Debug for ConstPoolItem<'_> {
 impl<'a> PartialEq<lang::Lang<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &lang::Lang<'a>) -> bool {
         match self {
-            ConstPoolItem::Sexp(_) | ConstPoolItem::Sym(_) => false,
+            ConstPoolItem::Sexp(sexp) => match &sexp.kind {
+                SexpKind::Lang(lang) => lang == other,
+                _ => false,
+            }
+            ConstPoolItem::Sym(_) => false,
             ConstPoolItem::Lang(lang) => *lang == other,
         }
     }
@@ -37,7 +41,11 @@ impl<'a> PartialEq<lang::Lang<'a>> for ConstPoolItem<'a> {
 impl<'a> PartialEq<lang::Sym<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &lang::Sym<'a>) -> bool {
         match self {
-            ConstPoolItem::Sexp(_) | ConstPoolItem::Lang(_) => false,
+            ConstPoolItem::Sexp(sexp) => match &sexp.kind {
+                SexpKind::Sym(sym) => sym == other,
+                _ => false,
+            }
+            ConstPoolItem::Lang(_) => false,
             ConstPoolItem::Sym(sym) => *sym == other,
         }
     }
