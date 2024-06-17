@@ -925,8 +925,6 @@ impl<'a> Compiler<'a> {
                 _ => self.cmp_special(expr),
             },
             "function" => {
-                false
-                /*
                 let forms = &expr.args[0].data;
                 let body = &expr.args[1].data;
 
@@ -938,15 +936,14 @@ impl<'a> Compiler<'a> {
                 let orig = std::mem::replace(&mut self.context, tmp);
 
                 let comp_body = self.gen_code(body, None);
-
-                let index = self.code_buffer.add_const(
-                    SexpKind::Vec(vec![
-                        SexpKind::List(forms.clone()).into(),
-                        comp_body.into(),
-                        SexpKind::Nil.into(),
-                    ])
-                    .into(),
-                );
+                let data = self.arena.alloc_slice_copy(&[
+                    self.arena.alloc(SexpKind::List(forms.clone()).into()) as &'a Sexp<'a>,
+                    self.arena.alloc(SexpKind::Bc(comp_body).into()) as &'a Sexp<'a>,
+                    self.arena.nil,
+                ]);
+                let index = self
+                    .code_buffer
+                    .add_const_sexp(self.arena.alloc(SexpKind::Vec(data).into()));
                 self.code_buffer.add_instr2(BcOp::MAKECLOSURE_OP, index);
 
                 let _ = std::mem::replace(&mut self.context, orig);
@@ -955,7 +952,7 @@ impl<'a> Compiler<'a> {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
 
-                true*/
+                true
             }
             "return" if expr.args.len() > 1 || self.dots_or_missing(&expr.args) => {
                 self.cmp_special(expr)
@@ -1416,7 +1413,7 @@ mod tests {
                     let mut file = std::fs::File::open(path_comp).unwrap();
                     file.read_to_end(&mut input_vec).unwrap();
 
-                    let mut file = std::fs::File::open(path_comp).unwrap();
+                    let file = std::fs::File::open(path_comp).unwrap();
                     let file = RDSReader::new(UnsafeCell::new(file), &arena);
                     let RDSResult {
                         header: _,

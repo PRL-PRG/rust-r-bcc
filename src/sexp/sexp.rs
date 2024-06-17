@@ -9,9 +9,9 @@ pub struct MetaData<'a> {
 
 impl<'a> PartialEq for MetaData<'a> {
     fn eq(&self, other: &Self) -> bool {
-        let self_data = self.attr.get();
-        let other_data = other.attr.get();
-        std::ptr::eq(self_data, other_data)
+        let self_data = unsafe { self.attr.get().as_ref().unwrap() };
+        let other_data = unsafe { other.attr.get().as_ref().unwrap() };
+        self_data == other_data
     }
 }
 
