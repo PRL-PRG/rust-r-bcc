@@ -152,7 +152,7 @@ impl Display for lang::Closure<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "function({})\n", join_string(&self.formals, ", "))?;
         write!(f, "{}\n", self.body)?;
-        write!(f, "(env : {})", self.environment)
+        write!(f, "(env : ({}))", self.environment)
     }
 }
 

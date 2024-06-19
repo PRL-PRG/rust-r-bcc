@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, time::Instant};
+use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, io::BufWriter, time::Instant};
 
 use bumpalo::Bump;
 use rds::{
@@ -98,10 +98,7 @@ fn bench() {
 
     let file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
     let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult {
-        header: _,
-        data: cmp,
-    } = file.read_rds().unwrap();
+    let RDSResult { header, data: cmp } = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
         unreachable!()
@@ -165,10 +162,13 @@ fn bench() {
         if &res == corr_closure {
             correct += 1;
         } else {
-            println!("fail {key}");
+            //println!("fail {key}")
             if *key == ".row" {
                 println!("My compilation:\n{res}\n");
                 println!("Correct compilation:\n{corr_closure}");
+                let bc: &Sexp = arena.alloc(SexpKind::Closure(res).into());
+                let mut outfile = File::create("temp/compout.dat").unwrap();
+                outfile.write_rds(header, bc, &arena).unwrap();
             }
         }
     }

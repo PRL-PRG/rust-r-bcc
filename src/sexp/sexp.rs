@@ -235,7 +235,7 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Clone)]
     pub struct Closure<'a> {
         pub(crate) formals: &'a [Formal<'a>],
         pub(crate) body: &'a super::Sexp<'a>,

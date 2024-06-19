@@ -143,8 +143,6 @@ impl<'a> Compiler<'a> {
         self.cmp(&target, false, false);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs.into());
-        //self.code_buffer.patch_labels();
-        //std::mem::replace(&mut self.code_buffer, orig).bc
         let tmp = self.code_buffer.create_bc(self.arena);
         let _ = std::mem::replace(&mut self.code_buffer, orig);
         tmp
