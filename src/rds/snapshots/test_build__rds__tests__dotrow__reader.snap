@@ -1,0 +1,171 @@
+---
+source: src/rds/tests.rs
+expression: data
+---
+Sexp {
+    kind: Closure(
+        Closure {
+            formals: [
+                Formal {
+                    name: Sym {
+                        data: "dim",
+                    },
+                    value: Sexp {
+                        kind: MissingArg,
+                        metadata: MetaData { attr: None },
+                    },
+                },
+            ],
+            body: Sexp {
+                kind: Bc(
+                    Bc {
+                        instructions: [
+                            12,
+                            123,
+                            0,
+                            11,
+                            27,
+                            1,
+                            20,
+                            2,
+                            33,
+                            39,
+                            3,
+                            1,
+                        ],
+                        constpool: [
+                            Sexp {
+                                kind: Lang(
+                                    Lang {
+                                        target: Sym(
+                                            Sym {
+                                                data: ".Internal",
+                                            },
+                                        ),
+                                        args: [
+                                            TaggedSexp {
+                                                tag: None,
+                                                data: Sexp {
+                                                    kind: Lang(
+                                                        Lang {
+                                                            target: Sym(
+                                                                Sym {
+                                                                    data: "row",
+                                                                },
+                                                            ),
+                                                            args: [
+                                                                TaggedSexp {
+                                                                    tag: None,
+                                                                    data: Sexp {
+                                                                        kind: Sym(
+                                                                            Sym {
+                                                                                data: "dim",
+                                                                            },
+                                                                        ),
+                                                                        metadata: MetaData { attr: None },
+                                                                    },
+                                                                },
+                                                            ],
+                                                        },
+                                                    ),
+                                                    metadata: MetaData { attr: None },
+                                                },
+                                            },
+                                        ],
+                                    },
+                                ),
+                                metadata: MetaData { attr: None },
+                            },
+                            Sexp {
+                                kind: Sym(
+                                    Sym {
+                                        data: "row",
+                                    },
+                                ),
+                                metadata: MetaData { attr: None },
+                            },
+                            Sexp {
+                                kind: Sym(
+                                    Sym {
+                                        data: "dim",
+                                    },
+                                ),
+                                metadata: MetaData { attr: None },
+                            },
+                            Sexp {
+                                kind: Lang(
+                                    Lang {
+                                        target: Sym(
+                                            Sym {
+                                                data: "row",
+                                            },
+                                        ),
+                                        args: [
+                                            TaggedSexp {
+                                                tag: None,
+                                                data: Sexp {
+                                                    kind: Sym(
+                                                        Sym {
+                                                            data: "dim",
+                                                        },
+                                                    ),
+                                                    metadata: MetaData { attr: None },
+                                                },
+                                            },
+                                        ],
+                                    },
+                                ),
+                                metadata: MetaData { attr: None },
+                            },
+                            Sexp {
+                                kind: Int(
+                                    [
+                                        -2147483648,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                    ],
+                                ),
+                                metadata: MetaData { attr: Some(
+                                    Sexp {
+                                        kind: List(
+                                            [
+                                                TaggedSexp {
+                                                    tag: Some(
+                                                        Sym {
+                                                            data: "class",
+                                                        },
+                                                    ),
+                                                    data: Sexp {
+                                                        kind: Str(
+                                                            [
+                                                                "expressionsIndex",
+                                                            ],
+                                                        ),
+                                                        metadata: MetaData { attr: None },
+                                                    },
+                                                },
+                                            ],
+                                        ),
+                                        metadata: MetaData { attr: None },
+                                    },
+                                ) },
+                            },
+                        ],
+                    },
+                ),
+                metadata: MetaData { attr: None },
+            },
+            environment: Global,
+        },
+    ),
+    metadata: MetaData { attr: None },
+}

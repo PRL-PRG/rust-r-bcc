@@ -449,3 +449,9 @@ testR![
 testR![
     hashenv_02, "{e <- new.env(); e$a <- 1; e$b <- 2; e }"
 ];
+
+testR![
+    dotrow,
+    "compiler::cmpfun(function(dim) .Internal(row(dim)))"
+];
+

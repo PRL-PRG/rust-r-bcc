@@ -1,6 +1,6 @@
 use super::sexp::{lang, Sexp, SexpKind};
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum ConstPoolItem<'a> {
     Sexp(&'a Sexp<'a>),
     Sym(&'a lang::Sym<'a>),
@@ -42,7 +42,7 @@ impl<'a> PartialEq<lang::Sym<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &lang::Sym<'a>) -> bool {
         match self {
             ConstPoolItem::Sexp(sexp) => match &sexp.kind {
-                SexpKind::Sym(sym) => sym == other,
+                SexpKind::Sym(sym) if sexp.metadata.get_attr().is_none() => sym == other,
                 _ => false,
             }
             ConstPoolItem::Lang(_) => false,
@@ -63,6 +63,16 @@ impl<'a> PartialEq<Sexp<'a>> for ConstPoolItem<'a> {
                 _ => false,
             },
             ConstPoolItem::Sexp(sexp) => *sexp == other,
+        }
+    }
+}
+
+impl<'a> PartialEq<ConstPoolItem<'a>> for ConstPoolItem<'a> {
+    fn eq(&self, other: &ConstPoolItem<'a>) -> bool {
+        match other {
+            ConstPoolItem::Sexp(sexp) => self == *sexp,
+            ConstPoolItem::Sym(sym) => self == *sym,
+            ConstPoolItem::Lang(lang) => self == *lang,
         }
     }
 }

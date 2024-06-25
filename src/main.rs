@@ -148,6 +148,9 @@ fn bench() {
                 panic!()
             }
         };
+        if *key == ".row" {
+            println!("{closure}");
+        }
         let res = compiler.cmpfun(closure);
         let corr_closure = cmp.hash_frame.get(&key).unwrap();
         let corr_closure = match &corr_closure.kind {
@@ -163,13 +166,6 @@ fn bench() {
             correct += 1;
         } else {
             //println!("fail {key}")
-            if *key == ".row" {
-                println!("My compilation:\n{res}\n");
-                println!("Correct compilation:\n{corr_closure}");
-                let bc: &Sexp = arena.alloc(SexpKind::Closure(res).into());
-                let mut outfile = File::create("temp/compout.dat").unwrap();
-                outfile.write_rds(header, bc, &arena).unwrap();
-            }
         }
     }
 
@@ -219,8 +215,8 @@ fn main() -> Result<(), MainError> {
             outfile.write_rds(header, bc, &alloc)?;
         }
         _ => {
-            //let mut outfile = File::create("temp/outfile.dat")?;
-            //outfile.write_rds(header, sexp)?;
+            let mut outfile = File::create("temp/outfile.dat")?;
+            outfile.write_rds(header, sexp, &alloc)?;
         }
     };
 

@@ -1528,11 +1528,22 @@ mod tests {
                         data: builtins,
                     } = file.read_rds().unwrap();
 
+                    let file = std::fs::File::open(format!("{path_env}.internal")).unwrap();
+                    let file = RDSReader::new(UnsafeCell::new(file), &arena);
+                    let RDSResult {
+                        header: _,
+                        data: internals,
+                    } = file.read_rds().unwrap();
+
                     let SexpKind::Str(specials) = specials.kind else {
                         unreachable!()
                     };
 
                     let SexpKind::Str(builtins) = builtins.kind else {
+                        unreachable!()
+                    };
+
+                    let SexpKind::Str(internals) = internals.kind else {
                         unreachable!()
                     };
 
@@ -1549,12 +1560,12 @@ mod tests {
 
                     compiler.specials = HashSet::from_iter(specials.to_vec().into_iter());
                     compiler.builtins = HashSet::from_iter(builtins.to_vec().into_iter());
+                    compiler.internals = HashSet::from_iter(internals.to_vec().into_iter());
 
                     compiler.set_baseenv(baseenv);
                     let bc = compiler.cmpfun(cl);
 
                     insta::assert_debug_snapshot!(compiler.warnings);
-                    //let input: Sexp = bc.into();
                     let input: &Sexp = arena.alloc(SexpKind::Closure(bc).into());
 
                     println!("My compilation:\n{input}\n");
@@ -1716,4 +1727,5 @@ mod tests {
     ];
     test_fun_default![tmp, "function() print(1)"];
     //test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
+    test_fun_default![dotrow, "function(dim) .Internal(row(dim))"];
 }

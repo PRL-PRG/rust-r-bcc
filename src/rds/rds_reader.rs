@@ -917,7 +917,7 @@ where
             match type_val {
                 sexptype::LISTSXP | sexptype::ATTRLISTSXP => continue,
                 sexptype::BCREPREF => {
-                    let rep = reps[self.read_int()? as usize];
+                    let _ = reps[self.read_int()? as usize];
                     todo!()
                 }
                 _ => {

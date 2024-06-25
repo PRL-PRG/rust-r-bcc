@@ -151,14 +151,11 @@ pub trait RDSWriter<'a>: Write {
                 self.write_envsxp(env, &sexp.metadata, refs, arena)
             }
             SexpKind::Environment(_) => Ok(()),
-            x@SexpKind::Promise {
-                environment: _,
-                expr: _,
-                value: _,
-            } => {
-                println!("{x}");
-                todo!()
-            }
+            SexpKind::Promise {
+                environment,
+                expr,
+                value,
+            } => self.write_promsxp(environment, expr, value, &sexp.metadata, refs, arena),
             SexpKind::Lang(lang) => self.write_langsxp(lang, &sexp.metadata, refs, arena),
             SexpKind::Bc(bc) => self.write_bc(bc, refs, arena),
             SexpKind::Char(chars) => {
@@ -747,6 +744,25 @@ pub trait RDSWriter<'a>: Write {
             None => self.write_int(super::sexptype::NILVALUE_SXP as i32)?,
         };
 
+        Ok(())
+    }
+
+    fn write_promsxp(
+        &mut self,
+        env: &'a lang::Environment<'a>,
+        expr: &'a Sexp<'a>,
+        value: &'a Sexp<'a>,
+        metadata: &'a MetaData<'a>,
+        refs: &mut RefsTableWriter<'a>,
+        arena: &'a Alloc<'a>,
+    ) -> Ret {
+        if let Some(attr) = metadata.get_attr() {
+            self.write_item(attr, refs, arena)?;
+        }
+
+        //self.write_env_inner(env, refs, arena)?;
+        self.write_item(value, refs, arena)?;
+        self.write_item(expr, refs, arena)?;
         Ok(())
     }
 }
