@@ -98,7 +98,7 @@ fn bench() {
 
     let file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
     let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult { header, data: cmp } = file.read_rds().unwrap();
+    let RDSResult { header: _, data: cmp } = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
         unreachable!()
@@ -148,9 +148,6 @@ fn bench() {
                 panic!()
             }
         };
-        if *key == ".row" {
-            println!("{closure}");
-        }
         let res = compiler.cmpfun(closure);
         let corr_closure = cmp.hash_frame.get(&key).unwrap();
         let corr_closure = match &corr_closure.kind {
@@ -165,7 +162,11 @@ fn bench() {
         if &res == corr_closure {
             correct += 1;
         } else {
-            //println!("fail {key}")
+            //println!("fail {key}");
+            if *key == "print.AsIs" {
+                println!("My compilation:\n{res}\n");
+                println!("Correct compilation:\n{corr_closure}");
+            }
         }
     }
 

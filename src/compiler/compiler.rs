@@ -691,6 +691,30 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
                 true
             }
+            "<-" if expr.args.len() == 2
+                && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
+            {
+                if !self.context.top_level {
+                    self.code_buffer.add_instr(BcOp::INCLNKSTK_OP);
+                }
+                // start op = STARTASSIGN.OP
+                // end op = ENDASSIGN.OP
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(expr.args[1].data, false, true);
+                self.context.tailcall = tailcall;
+
+                let sym = self
+                    .get_assigned_var(&expr.args[0].data)
+                    .expect("Target of the assign cannot be resoved");
+
+                let index = self.code_buffer.add_const_sym(sym);
+                self.code_buffer.add_instr2(BcOp::STARTASSIGN_OP, index);
+
+                  
+
+                true
+            }
             "+" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
                 true
@@ -750,6 +774,19 @@ impl<'a> Compiler<'a> {
                         _ => (BcOp::SUBSET2_N_OP, true),
                     };
                     self.cmp_subset_dispatch(BcOp::STARTSUBSET2_N_OP, code, rank, expr)
+                }
+            }
+            "[" => {
+                if self.dots_or_missing(&expr.args) {
+                    self.cmp_dispatch(BcOp::STARTSUBSET_OP, BcOp::DFLTSUBSET_OP, expr, true)
+                } else {
+                    let nidx = expr.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBSET_OP, false),
+                        2 => (BcOp::MATSUBSET_OP, false),
+                        _ => (BcOp::SUBSET_N_OP, true),
+                    };
+                    self.cmp_subset_dispatch(BcOp::STARTSUBSET_N_OP, code, rank, expr)
                 }
             }
             "while" => {
@@ -1003,10 +1040,12 @@ impl<'a> Compiler<'a> {
                     expr.args[0].clone(),
                     data::TaggedSexp::new(self.arena.nil),
                 ]);
-                let args = data::List {data};
+                let args = data::List { data };
                 let lang = self.arena.alloc(lang::Lang::new(fun_sym, args));
                 let target: lang::Target = lang::Target::Lang(lang);
-                let lang = self.arena.alloc(lang::Lang::new(target, self.arena.nil_list));
+                let lang = self
+                    .arena
+                    .alloc(lang::Lang::new(target, self.arena.nil_list));
 
                 // before
                 // self.cmp(&lang.into(), false, true);
@@ -1098,8 +1137,8 @@ impl<'a> Compiler<'a> {
         match sym {
             "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
             | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function"
-            | "local" | "[[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|"
-            | "!" | "&&" | "||" | "$" => true,
+            | "local" | "[[" | "[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&"
+            | "|" | "!" | "&&" | "||" | "$" => true,
 
             "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
             | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
@@ -1118,7 +1157,14 @@ impl<'a> Compiler<'a> {
 
         for arg in args {
             match &arg.data.kind {
-                SexpKind::MissingArg => todo!(),
+                SexpKind::MissingArg => {
+                    if missing_ok {
+                        self.code_buffer.add_instr(BcOp::DOMISSING_OP);
+                        self.cmp_tag(&arg.tag);
+                    } else {
+                        todo!()
+                    }
+                }
                 SexpKind::Sym(sym) if sym.data == ".." => todo!(),
                 SexpKind::Bc(_) => todo!(),
                 SexpKind::Promise {
@@ -1303,9 +1349,9 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn get_assigned_var(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a str> {
+    fn get_assigned_var(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {
         match &sexp.kind {
-            SexpKind::Sym(sym) => Some(sym.data),
+            SexpKind::Sym(sym) => Some(sym),
             SexpKind::Lang(lang) => self.get_assigned_var(&lang.args[0].data),
             SexpKind::MissingArg => todo!(),
             _ => None,
@@ -1325,7 +1371,7 @@ impl<'a> Compiler<'a> {
             "=" | "<-" | "for" => {
                 let var = self.get_assigned_var(&sexp.args[0].data);
                 if let Some(var) = var {
-                    self.localenv.insert(var);
+                    self.localenv.insert(var.data);
                 }
             }
             "delayedAssign" | "assign" => match &sexp.args[0].data.kind {
@@ -1728,4 +1774,14 @@ mod tests {
     test_fun_default![tmp, "function() print(1)"];
     //test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
     test_fun_default![dotrow, "function(dim) .Internal(row(dim))"];
+    test_fun_default![
+        print_asis,
+        "
+    function (x, ...) {
+        cl <- oldClass(x)
+        oldClass(x) <- cl[cl != \"AsIs\"]
+        NextMethod(\"print\")
+        invisible(x)
+    }"
+    ];
 }
