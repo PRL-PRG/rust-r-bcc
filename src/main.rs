@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, io::BufWriter, time::Instant};
+use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, time::Instant};
 
 use bumpalo::Bump;
 use rds::{
@@ -47,6 +47,108 @@ impl From<RDSWriterError> for MainError {
 
 //impl<'a> RDSReader<'a> for File {}
 impl<'a> RDSWriter<'a> for File {}
+
+fn noopt_bench() {
+    let path_env = "temp/benchenv_noopt.RDS";
+
+    // base environment
+    let mut command = std::process::Command::new("./compile_base_package.R")
+        .args([path_env])
+        .spawn()
+        .unwrap();
+    assert!(command.wait().unwrap().success());
+
+    let arena = Bump::new();
+    let arena = Alloc::new(&arena);
+    let full_start = Instant::now();
+    let file = std::fs::File::open(path_env).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
+    let RDSResult {
+        header: _,
+        data: baseenv,
+    } = file.read_rds().unwrap();
+
+    let file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
+    let RDSResult {
+        header: _,
+        data: orig,
+    } = file.read_rds().unwrap();
+
+    let file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
+    let file = RDSReader::new(UnsafeCell::new(file), &arena);
+    let RDSResult {
+        header: _,
+        data: cmp,
+    } = file.read_rds().unwrap();
+
+    let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
+        unreachable!()
+    };
+
+    let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
+        println!("{orig}");
+        unreachable!()
+    };
+
+    let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
+        println!("{cmp}");
+        unreachable!()
+    };
+
+    assert!(orig.hash_frame.data.is_some());
+
+    let mut count = 0;
+    let mut correct = 0;
+    let mut fails = 0;
+    let all = orig.hash_frame.env.len();
+    let mut compiler = Compiler::new_options(0, &arena);
+    //compiler.set_baseenv(env);
+
+    let comp_start = Instant::now();
+    for key in orig.hash_frame.env.keys() {
+        count += 1;
+        let closure = orig.hash_frame.get(&key).unwrap();
+        let closure = match &closure.kind {
+            SexpKind::Closure(closure) => closure,
+            SexpKind::Nil => continue,
+            _ => {
+                println!("{closure}");
+                panic!()
+            }
+        };
+        let res = compiler.cmpfun(closure);
+        let corr_closure = cmp.hash_frame.get(&key).unwrap();
+        let corr_closure = match &corr_closure.kind {
+            SexpKind::Closure(closure) => closure,
+            SexpKind::Nil => panic!(),
+            _ => {
+                println!("{closure}");
+                panic!()
+            }
+        };
+
+        if &res == corr_closure {
+            correct += 1;
+        } else {
+            fails += 1;
+            println!("fail {key}");
+            if *key == "data.matrix" {
+                println!("My compilation:\n{res}\n");
+                println!("Correct compilation:\n{corr_closure}");
+            }
+        }
+    }
+
+    eprintln!("{correct} / {all} ({count}, {fails})");
+    println!(
+        "{}s {}ms {}s {}ms",
+        full_start.elapsed().as_secs_f32(),
+        full_start.elapsed().as_millis(),
+        comp_start.elapsed().as_secs_f64(),
+        comp_start.elapsed().as_millis()
+    );
+}
 
 fn bench() {
     let path_env = "temp/benchenv.RDS";
@@ -98,7 +200,10 @@ fn bench() {
 
     let file = std::fs::File::open(format!("{path_env}.cmp")).unwrap();
     let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult { header: _, data: cmp } = file.read_rds().unwrap();
+    let RDSResult {
+        header: _,
+        data: cmp,
+    } = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
         unreachable!()
@@ -152,7 +257,7 @@ fn bench() {
         let corr_closure = cmp.hash_frame.get(&key).unwrap();
         let corr_closure = match &corr_closure.kind {
             SexpKind::Closure(closure) => closure,
-            SexpKind::Nil => continue,
+            SexpKind::Nil => panic!(),
             _ => {
                 println!("{closure}");
                 panic!()
@@ -188,6 +293,10 @@ fn main() -> Result<(), MainError> {
     }
     if args.len() == 2 && args[1] == "-b" {
         bench();
+        return Ok(());
+    }
+    if args.len() == 2 && args[1] == "-nooptb" {
+        noopt_bench();
         return Ok(());
     }
     if args.len() != 3 {

@@ -203,8 +203,8 @@ impl<'a> Compiler<'a> {
 
     fn cmp_sym(&mut self, sym: &'a lang::Sym<'a>, missing_ok: bool) {
         match sym.data {
-            ".." => self.code_buffer.add_instr(BcOp::DOTSERR_OP),
-            name if name.starts_with("..") => {
+            "..." => self.code_buffer.add_instr(BcOp::DOTSERR_OP),
+            name if name.starts_with("..") && name[2..].parse::<usize>().is_ok() => {
                 let index = self.code_buffer.add_const(sym.into());
                 if missing_ok {
                     self.code_buffer.add_instr2(BcOp::DDVAL_MISSOK_OP, index)
@@ -692,7 +692,7 @@ impl<'a> Compiler<'a> {
                 true
             }
             "<-" if expr.args.len() == 2
-                && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
+                && false && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
             {
                 if !self.context.top_level {
                     self.code_buffer.add_instr(BcOp::INCLNKSTK_OP);
@@ -1696,6 +1696,15 @@ mod tests {
         }"
     ];
     //test_fun_noopt![higher_order, "(function(x) function(y) x + y)(1)"];
+    test_fun_noopt![
+        tmp_noopt,
+        "
+        function (x) {
+            g(x);
+            f(y);
+        }"
+    ];
+
 
     test_fun_default![basic_opt, "function() NULL"];
     test_fun_default![basic_real_opt, "function() 1"];
@@ -1784,4 +1793,13 @@ mod tests {
         invisible(x)
     }"
     ];
+    test_fun_default![
+        two_calls,
+        "
+        function (x) {
+            g(x);
+            f(x);
+        }"
+    ];
+
 }
