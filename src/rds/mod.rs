@@ -274,6 +274,7 @@ impl From<&Sexp<'_>> for Flag {
             SexpKind::BaseNamespace => sexptype::BASENAMESPACE_SXP,
             SexpKind::Buildin(_) => sexptype::BUILTINSXP,
             SexpKind::NAString => sexptype::CHARSXP,
+            SexpKind::UnboundVal => sexptype::UNBOUNDVALUE_SXP,
         };
 
         let str_fmt = match value.kind {
@@ -297,7 +298,10 @@ impl From<&Sexp<'_>> for Flag {
                 },
                 has_tag: if matches!(value.kind, SexpKind::Closure(_)) {
                     true
-                } else {
+                } else if let SexpKind::Promise { environment, expr : _, value:_ } = &value.kind {
+                    *environment != &lang::Environment::Empty
+                }
+                else {
                     false
                 },
                 obj: if matches!(

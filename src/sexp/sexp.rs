@@ -453,6 +453,7 @@ pub enum SexpKind<'a> {
     Vec(&'a [&'a Sexp<'a>]),
 
     MissingArg,
+    UnboundVal,
 
     BaseNamespace, // as in GnuR fake namespace
 }

@@ -72,6 +72,7 @@ impl Display for SexpKind<'_> {
             SexpKind::BaseNamespace => write!(f, "base namespace"),
             SexpKind::Buildin(sym) => write!(f, "{sym}"),
             SexpKind::NAString => write!(f, "NASTRING"),
+            SexpKind::UnboundVal => write!(f, "UNBOUND"),
         }
     }
 }

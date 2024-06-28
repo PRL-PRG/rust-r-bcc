@@ -218,6 +218,7 @@ where
             sexptype::PROMSXP => self.read_promsxp(flag, refs)?,
             sexptype::CPLXSXP => self.read_cplsxp()?,
             sexptype::NAMESPACESXP => self.read_namespace(refs)?,
+            sexptype::UNBOUNDVALUE_SXP => self.arena.unbound,
             //sexptype::EXTPTRSXP => self.chain
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
@@ -658,10 +659,10 @@ where
                 self.arena.get_empty()
             }
             sexptype::BASEENV_SXP | sexptype::BASENAMESPACE_SXP => self.arena.get_base(),
-            x => {
+            _ => {
                 return Err(RDSReaderError::DataError(format!(
-                    "Parent of environment must be an environment got {x}"
-                )))
+                    "Parent of environment must be an environment got {flags:?}"
+                )));
             }
         };
 
@@ -922,8 +923,8 @@ where
                 }
                 _ => {
                     self.read_bclang(type_val, refs, reps)?;
-                    break
-                }   
+                    break;
+                }
             }
         }
         let data = self.arena.alloc_slice_clone(res.as_slice());
@@ -969,9 +970,7 @@ where
             ) {
                 return Err(RDSReaderError::DataError("Expected environment".into()));
             }
-            let super::SexpKind::Environment(env) = &self.read_envsxp(refs)?.kind else {
-                unreachable!()
-            };
+            let env = self.read_enviroment(refs, flag)?;
             env
         } else {
             self.arena.get_empty()

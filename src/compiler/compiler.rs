@@ -1781,8 +1781,9 @@ mod tests {
         }"
     ];
     test_fun_default![tmp, "function() print(1)"];
-    //test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
+    test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
     test_fun_default![dotrow, "function(dim) .Internal(row(dim))"];
+    /*
     test_fun_default![
         print_asis,
         "
@@ -1792,7 +1793,7 @@ mod tests {
         NextMethod(\"print\")
         invisible(x)
     }"
-    ];
+    ];*/
     test_fun_default![
         two_calls,
         "

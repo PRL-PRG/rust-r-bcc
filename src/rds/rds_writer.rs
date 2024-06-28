@@ -214,6 +214,7 @@ pub trait RDSWriter<'a>: Write {
                 self.write_charsxp(sym.data)
             }
             SexpKind::NAString => self.write_int(-1),
+            SexpKind::UnboundVal => Ok(()),
         }?;
         if flag.has_attributes
             && flag.sexp_type != super::sexptype::REFSXP
@@ -760,7 +761,9 @@ pub trait RDSWriter<'a>: Write {
             self.write_item(attr, refs, arena)?;
         }
 
-        //self.write_env_inner(env, refs, arena)?;
+        if env != &lang::Environment::Empty {
+            self.write_env_inner(env, refs, arena)?;
+        }
         self.write_item(value, refs, arena)?;
         self.write_item(expr, refs, arena)?;
         Ok(())

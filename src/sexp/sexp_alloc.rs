@@ -7,15 +7,16 @@ use super::sexp::{data, lang, MetaData, Sexp, SexpKind};
 pub struct Alloc<'a> {
     allocator: &'a Bump,
     pub nil: &'a Sexp<'a>,
-    pub nil_list: data::List<'a>, // this is done to dedupe empty list
+    pub nil_list: data::List<'a>,    // this is done to dedupe empty list
     pub nil_vec: &'a [&'a Sexp<'a>], // this is done to dedupe empty vecs
     pub missing: &'a Sexp<'a>,
     pub base_env: &'a Sexp<'a>,
     pub global_env: &'a Sexp<'a>,
     pub empty_env: &'a Sexp<'a>,
     pub na_string: &'a str,
+    pub unbound: &'a Sexp<'a>,
 
-    pub empty_metadata :&'a MetaData<'a>,
+    pub empty_metadata: &'a MetaData<'a>,
 }
 
 impl<'a> Alloc<'a> {
@@ -33,7 +34,8 @@ impl<'a> Alloc<'a> {
             global_env: allocator.alloc(SexpKind::Environment(lang::Environment::Global).into()),
             empty_env: allocator.alloc(SexpKind::Environment(lang::Environment::Empty).into()),
             na_string: allocator.alloc_str("__NA__"),
-            empty_metadata:allocator.alloc(MetaData::default()),
+            unbound: allocator.alloc(SexpKind::UnboundVal.into()),
+            empty_metadata: allocator.alloc(MetaData::default()),
         }
     }
 
@@ -67,4 +69,3 @@ impl<'a> Deref for Alloc<'a> {
         &self.allocator
     }
 }
-

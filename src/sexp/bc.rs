@@ -29,11 +29,11 @@ impl<'a> PartialEq<lang::Lang<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &lang::Lang<'a>) -> bool {
         match self {
             ConstPoolItem::Sexp(sexp) => match &sexp.kind {
-                SexpKind::Lang(lang) => lang == other,
+                SexpKind::Lang(lang) => std::ptr::eq(lang, other) || lang == other,
                 _ => false,
-            }
+            },
             ConstPoolItem::Sym(_) => false,
-            ConstPoolItem::Lang(lang) => *lang == other,
+            ConstPoolItem::Lang(lang) => std::ptr::eq(*lang, other) || *lang == other,
         }
     }
 }
@@ -42,11 +42,13 @@ impl<'a> PartialEq<lang::Sym<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &lang::Sym<'a>) -> bool {
         match self {
             ConstPoolItem::Sexp(sexp) => match &sexp.kind {
-                SexpKind::Sym(sym) if sexp.metadata.get_attr().is_none() => sym == other,
+                SexpKind::Sym(sym) if sexp.metadata.get_attr().is_none() => {
+                    std::ptr::eq(sym, other) || sym == other
+                }
                 _ => false,
-            }
+            },
             ConstPoolItem::Lang(_) => false,
-            ConstPoolItem::Sym(sym) => *sym == other,
+            ConstPoolItem::Sym(sym) => std::ptr::eq(*sym, other) || *sym == other,
         }
     }
 }
@@ -55,14 +57,16 @@ impl<'a> PartialEq<Sexp<'a>> for ConstPoolItem<'a> {
     fn eq(&self, other: &Sexp<'a>) -> bool {
         match self {
             ConstPoolItem::Sym(sym) => match &other.kind {
-                SexpKind::Sym(other_sym) => *sym == other_sym,
+                SexpKind::Sym(other_sym) => std::ptr::eq(*sym, other_sym) || *sym == other_sym,
                 _ => false,
             },
             ConstPoolItem::Lang(lang) => match &other.kind {
-                SexpKind::Lang(other_lang) => *lang == other_lang,
+                SexpKind::Lang(other_lang) => {
+                    std::ptr::eq(*lang, other_lang) || *lang == other_lang
+                }
                 _ => false,
             },
-            ConstPoolItem::Sexp(sexp) => *sexp == other,
+            ConstPoolItem::Sexp(sexp) => std::ptr::eq(*sexp, other) || *sexp == other,
         }
     }
 }

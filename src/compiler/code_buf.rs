@@ -22,7 +22,6 @@ struct Label {
 // code buffer is mutable Bc
 // with additional data
 pub struct CodeBuffer<'a> {
-    //pub bc: Bc<'a>,
     instructions: Vec<i32>,
     constpool: Vec<ConstPoolItem<'a>>,
     pub current_expr: Option<ConstPoolItem<'a>>,
@@ -149,8 +148,24 @@ impl<'a> CodeBuffer<'a> {
         }
     }
 
+    // helper function to test assert
+    fn check_uniqueness_const(&self) -> bool {
+        for i in 0..(self.constpool.len() - 1) {
+            for j in (i + 1)..self.constpool.len() {
+                if self.constpool[i] == self.constpool[j] {
+                    println!("{}", self.constpool[i]);
+                    return false
+                }
+            }
+        }
+        true
+    }
+
     pub fn create_bc(&mut self, arena: &'a Alloc<'a>) -> Bc<'a> {
         self.patch_labels();
+
+        //assert!(self.check_uniqueness_const());
+
         Bc::new(
             arena.alloc_slice_copy(self.instructions.as_slice()),
             arena.alloc_slice_copy(self.constpool.as_slice()),
