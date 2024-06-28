@@ -787,7 +787,7 @@ impl<'a> PartialEq<lang::Lang<'a>> for RepsItem<'a> {
     fn eq(&self, other: &lang::Lang<'a>) -> bool {
         match self {
             RepsItem::Placeholder | RepsItem::List(_) => false,
-            RepsItem::Lang(lang) => std::ptr::eq(*lang, other) || *lang == other,
+            RepsItem::Lang(lang) => std::ptr::eq(*lang, other),
         }
     }
 }
@@ -796,7 +796,7 @@ impl<'a> PartialEq<data::List<'a>> for RepsItem<'a> {
     fn eq(&self, other: &data::List<'a>) -> bool {
         match self {
             RepsItem::Placeholder | RepsItem::Lang(_) => false,
-            RepsItem::List(list) => std::ptr::eq(*list, other) || *list == other,
+            RepsItem::List(list) => std::ptr::eq(*list, other),
         }
     }
 }

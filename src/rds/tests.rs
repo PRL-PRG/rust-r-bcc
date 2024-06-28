@@ -455,3 +455,21 @@ testR![
     "compiler::cmpfun(function(dim) .Internal(row(dim)))"
 ];
 
+testR![
+    two_calls,
+    "
+    function (x) {
+        g(x);
+        f(x);
+    }"
+];
+
+testR![
+    two_calls_cmp,
+    "
+    compiler::cmpfun(
+    function (x) {
+        g(x);
+        f(x);
+    })"
+];
