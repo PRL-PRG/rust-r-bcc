@@ -166,3 +166,9 @@ impl Display for data::Logic {
         }
     }
 }
+
+impl Display for data::Double {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", *self)
+    }
+}

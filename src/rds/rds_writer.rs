@@ -180,7 +180,7 @@ pub trait RDSWriter<'a>: Write {
                 self.write_len(reals.len())?;
 
                 for val in reals.iter() {
-                    self.write_double(*val)?;
+                    self.write_double(val.data)?;
                 }
                 Ok(())
             }

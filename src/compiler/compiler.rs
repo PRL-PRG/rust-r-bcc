@@ -361,7 +361,7 @@ impl<'a> Compiler<'a> {
             .alloc(lang::Sym::new(self.arena.alloc_str("class")))
             as &'a lang::Sym<'a>;
         let data = self.arena.alloc(Sexp {
-            kind: SexpKind::Str(string),
+            kind: SexpKind::Str(data::RVec::new(string)),
             metadata: MetaData {
                 attr: UnsafeCell::new(None),
             },
@@ -372,7 +372,7 @@ impl<'a> Compiler<'a> {
         let attr = data::List { data };
         let attr = self.arena.alloc(SexpKind::List(attr).into());
         self.arena.alloc(Sexp {
-            kind: SexpKind::Int(ints),
+            kind: SexpKind::Int(data::RVec::new(ints)),
             metadata: MetaData {
                 attr: UnsafeCell::new(Some(attr)),
             },
@@ -692,7 +692,8 @@ impl<'a> Compiler<'a> {
                 true
             }
             "<-" if expr.args.len() == 2
-                && false && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
+                && false
+                && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
             {
                 if !self.context.top_level {
                     self.code_buffer.add_instr(BcOp::INCLNKSTK_OP);
@@ -710,8 +711,6 @@ impl<'a> Compiler<'a> {
 
                 let index = self.code_buffer.add_const_sym(sym);
                 self.code_buffer.add_instr2(BcOp::STARTASSIGN_OP, index);
-
-                  
 
                 true
             }
@@ -1705,7 +1704,6 @@ mod tests {
         }"
     ];
 
-
     test_fun_default![basic_opt, "function() NULL"];
     test_fun_default![basic_real_opt, "function() 1"];
     test_fun_default![identity_opt, "function(x) x"];
@@ -1803,4 +1801,45 @@ mod tests {
         }"
     ];
 
+    test_fun_noopt![
+        tmp_test,
+        "
+        function (frame, rownames.force = NA)
+{
+    if (!is.data.frame(frame))
+        return(as.matrix(frame))
+    d <- dim(frame)
+    rn <- if (isFALSE(rownames.force))
+        NULL
+    else if (isTRUE(rownames.force))
+        row.names(frame)
+    else if (.row_names_info(frame) <= 0L)
+        NULL
+    else row.names(frame)
+    for (i in seq_len(d[2L])) {
+        xi <- frame[[i]]
+        if (is.integer(xi) || is.numeric(xi))
+            next
+        if (is.logical(xi) || is.factor(xi)) {
+            frame[[i]] <- as.integer(xi)
+            next
+        }
+        if (is.character(xi)) {
+            frame[[i]] <- as.integer(factor(xi))
+            next
+        }
+        frame[[i]] <- if (isS4(xi))
+            methods::as(xi, \"numeric\")
+        else as.numeric(xi)
+    }
+    intOK <- all(unlist(lapply(frame, is.integer)))
+    x <- matrix(if (intOK)
+        NA_integer_
+    else NA_real_, nrow = d[1L], ncol = d[2L], dimnames = list(rn,
+        names(frame)))
+    for (i in seq_len(d[2L])) x[, i] <- frame[[i]]
+    x
+}
+        "
+    ];
 }

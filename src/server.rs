@@ -59,13 +59,13 @@ fn handle_conn(stream: TcpStream) {
                 CompilerOptions::default()
             }
         }
-        SexpKind::Real(data) if data.len() == 1 => CompilerOptions::new(data[0] as usize),
+        SexpKind::Real(data) if data.len() == 1 => CompilerOptions::new(data[0].data as usize),
         SexpKind::Vec(data) if data.len() == 1 => {
             if let SexpKind::Real(num) = &data[0].kind {
                 if num.len() != 1 {
                     CompilerOptions::default()
                 } else {
-                    CompilerOptions::new(num[0] as usize)
+                    CompilerOptions::new(num[0].data as usize)
                 }
             } else {
                 CompilerOptions::default()

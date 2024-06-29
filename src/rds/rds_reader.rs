@@ -289,10 +289,12 @@ where
         let data = self.arena.alloc_slice_fill_default(len);
 
         for i in 0..len {
-            data[i] = self.read_double()?;
+            data[i] = self.read_double()?.into();
         }
 
-        Ok(self.arena.alloc(SexpKind::Real(data).into()))
+        Ok(self
+            .arena
+            .alloc(SexpKind::Real(data::RVec::new(data)).into()))
     }
 
     fn read_ints(&self) -> Result<&'a [i32], RDSReaderError> {
@@ -307,7 +309,9 @@ where
     }
 
     fn read_intsxp(&self) -> Result<&'a Sexp<'a>, RDSReaderError> {
-        Ok(self.arena.alloc(SexpKind::Int(self.read_ints()?).into()))
+        Ok(self
+            .arena
+            .alloc(SexpKind::Int(data::RVec::new(self.read_ints()?)).into()))
     }
 
     fn read_lglsxp(&self) -> Result<&'a Sexp<'a>, RDSReaderError> {
@@ -468,7 +472,9 @@ where
             data[i] = string;
         }
 
-        Ok(self.arena.alloc(SexpKind::Str(data).into()))
+        Ok(self
+            .arena
+            .alloc(SexpKind::Str(data::RVec::new(data)).into()))
     }
 
     fn read_langsxp(

@@ -5,7 +5,7 @@ use rds::{
     rds_reader::{RDSReader, RDSReaderError},
     rds_writer::{RDSWriter, RDSWriterError},
 };
-use sexp::sexp_alloc::Alloc;
+use sexp::{bc::ConstPoolItem, sexp_alloc::Alloc};
 
 use crate::{
     compiler::compiler::Compiler,
@@ -61,12 +61,6 @@ fn noopt_bench() {
     let arena = Bump::new();
     let arena = Alloc::new(&arena);
     let full_start = Instant::now();
-    let file = std::fs::File::open(path_env).unwrap();
-    let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult {
-        header: _,
-        data: baseenv,
-    } = file.read_rds().unwrap();
 
     let file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
     let file = RDSReader::new(UnsafeCell::new(file), &arena);
@@ -81,10 +75,6 @@ fn noopt_bench() {
         header: _,
         data: cmp,
     } = file.read_rds().unwrap();
-
-    let SexpKind::Environment(lang::Environment::Normal(env)) = baseenv.kind else {
-        unreachable!()
-    };
 
     let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
         println!("{orig}");
@@ -107,7 +97,6 @@ fn noopt_bench() {
 
     let comp_start = Instant::now();
     for key in orig.hash_frame.env.keys() {
-        count += 1;
         let closure = orig.hash_frame.get(&key).unwrap();
         let closure = match &closure.kind {
             SexpKind::Closure(closure) => closure,
@@ -128,14 +117,16 @@ fn noopt_bench() {
             }
         };
 
+        count += 1;
+
         if &res == corr_closure {
             correct += 1;
         } else {
             fails += 1;
             println!("fail {key}");
-            if *key == "data.matrix" {
-                println!("My compilation:\n{res}\n");
-                println!("Correct compilation:\n{corr_closure}");
+            if *key == "qr.coef" {
+                println!("My:\n{res}\n");
+                println!("Correct:\n{corr_closure}\n");
             }
         }
     }

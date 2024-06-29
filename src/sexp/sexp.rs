@@ -59,10 +59,16 @@ impl<'a> MetaData<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Sexp<'a> {
     pub kind: SexpKind<'a>,
     pub metadata: MetaData<'a>,
+}
+
+impl<'a> PartialEq for Sexp<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other) || (self.kind == other.kind && self.metadata == other.metadata)
+    }
 }
 
 impl<'a> From<SexpKind<'a>> for Sexp<'a> {
@@ -87,10 +93,23 @@ pub mod data {
 
     use super::Sexp;
 
-    #[derive(Debug, PartialEq, Clone)]
+    #[derive(Debug, Clone)]
     pub struct TaggedSexp<'a> {
         pub tag: Option<&'a super::lang::Sym<'a>>,
         pub data: &'a Sexp<'a>,
+    }
+
+    impl<'a> PartialEq for TaggedSexp<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            match (self.tag, other.tag) {
+                (None, Some(_)) | (Some(_), None) => return false,
+                (Some(a), Some(b)) if !(std::ptr::eq(a.data, b.data) || a.data == b.data) => {
+                    return false
+                }
+                _ => (),
+            }
+            std::ptr::eq(self.data, other.data) || self.data == other.data
+        }
     }
 
     impl<'a> TaggedSexp<'a> {
@@ -116,9 +135,15 @@ pub mod data {
         pub imaginary: f64,
     }
 
-    #[derive(PartialEq, Clone, Copy)]
+    #[derive(Clone, Copy)]
     pub struct List<'a> {
         pub data: &'a [TaggedSexp<'a>],
+    }
+
+    impl<'a> PartialEq for List<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            std::ptr::eq(self.data, other.data) || self.data == other.data
+        }
     }
 
     impl std::fmt::Debug for List<'_> {
@@ -136,6 +161,56 @@ pub mod data {
 
         fn deref(&self) -> &Self::Target {
             &self.data
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    pub struct RVec<'a, T>
+    where
+        T: PartialEq,
+    {
+        data: &'a [T],
+    }
+
+    impl<'a, T> RVec<'a, T>
+    where
+        T: PartialEq,
+    {
+        pub fn new(data: &'a [T]) -> Self {
+            Self { data }
+        }
+    }
+
+    impl<'a, T> PartialEq for RVec<'a, T>
+    where
+        T: PartialEq,
+    {
+        fn eq(&self, other: &Self) -> bool {
+            std::ptr::eq(self.data, other.data) || self.data == other.data
+        }
+    }
+
+    impl<'a, T> Deref for RVec<'a, T>
+    where
+        T: PartialEq,
+    {
+        type Target = [T];
+
+        fn deref(&self) -> &Self::Target {
+            self.data
+        }
+    }
+
+    impl<'a, T> std::fmt::Debug for RVec<'a, T>
+    where
+        T: PartialEq + std::fmt::Debug,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if f.alternate() {
+                write!(f, "{:#?}", self.data)
+            } else {
+                write!(f, "{:?}", self.data)
+            }
         }
     }
 
@@ -169,6 +244,38 @@ pub mod data {
             }
         }
     }
+
+    // This is needed because of the NA equality
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct Double {
+        pub data: f64,
+    }
+
+    impl Into<f64> for Double {
+        fn into(self) -> f64 {
+            self.data
+        }
+    }
+
+    impl From<f64> for Double {
+        fn from(value: f64) -> Self {
+            Double { data: value }
+        }
+    }
+
+    impl Deref for Double {
+        type Target = f64;
+
+        fn deref(&self) -> &Self::Target {
+            &self.data
+        }
+    }
+
+    impl PartialEq for Double {
+        fn eq(&self, other: &Self) -> bool {
+            (self.data.is_nan() && other.data.is_nan()) || self.data == other.data
+        }
+    }
 }
 
 pub mod lang {
@@ -176,9 +283,15 @@ pub mod lang {
 
     use crate::sexp::sexp_alloc::Alloc;
 
-    #[derive(Debug, PartialEq, Clone)]
+    #[derive(Debug, Clone)]
     pub struct Sym<'a> {
         pub(crate) data: &'a str,
+    }
+
+    impl<'a> PartialEq for Sym<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            std::ptr::eq(self.data, other.data) || self.data == other.data
+        }
     }
 
     impl<'a> Sym<'a> {
@@ -193,10 +306,20 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug)]
     pub enum Target<'a> {
         Lang(&'a Lang<'a>), // expression
         Sym(Sym<'a>),       // named
+    }
+
+    impl<'a> PartialEq for Target<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Target::Lang(a), Target::Lang(b)) => std::ptr::eq(*a, *b) || *a == *b,
+                (Target::Sym(a), Target::Sym(b)) => std::ptr::eq(a.data, b.data) || *a == *b,
+                _ => false,
+            }
+        }
     }
 
     impl<'a> From<Sym<'a>> for Target<'a> {
@@ -268,7 +391,7 @@ pub mod lang {
         Base,
         Empty,
         Normal(&'a NormalEnv<'a>),
-        Namespace(&'a mut [&'a super::Sexp<'a>]),
+        Namespace(&'a [&'a super::Sexp<'a>]),
     }
 
     impl<'a> Environment<'a> {
@@ -317,11 +440,16 @@ pub mod lang {
         }
     }
 
-    #[derive(PartialEq)]
     pub struct ListFrame<'a> {
         pub data: Option<super::data::List<'a>>,
         // this is boxed to allow droping this with the arena death
         pub env: bumpalo::boxed::Box<'a, HashMap<&'a str, usize>>,
+    }
+
+    impl<'a> PartialEq for ListFrame<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            self.data == other.data
+        }
     }
 
     impl std::fmt::Debug for ListFrame<'_> {
@@ -359,11 +487,16 @@ pub mod lang {
         }
     }
 
-    #[derive(PartialEq)]
     pub struct HashFrame<'a> {
         pub data: Option<&'a [&'a super::Sexp<'a>]>,
         // this is boxed to allow droping this with the arena death
         pub env: bumpalo::boxed::Box<'a, HashMap<&'a str, (usize, usize)>>,
+    }
+
+    impl<'a> PartialEq for HashFrame<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            self.data == other.data
+        }
     }
 
     impl std::fmt::Debug for HashFrame<'_> {
@@ -446,10 +579,10 @@ pub enum SexpKind<'a> {
     Char(&'a [char]),
     NAString,
     Logic(&'a [data::Logic]),
-    Real(&'a [f64]),
-    Int(&'a [i32]),
+    Real(data::RVec<'a, data::Double>),
+    Int(data::RVec<'a, i32>),
     Complex(&'a [data::Complex]),
-    Str(&'a [&'a str]),
+    Str(data::RVec<'a, &'a str>),
     Vec(&'a [&'a Sexp<'a>]),
 
     MissingArg,
