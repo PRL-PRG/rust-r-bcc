@@ -80,8 +80,8 @@ where
     }
 
     fn read_complex(&self) -> Result<data::Complex, RDSReaderError> {
-        let real = self.read_double()?;
-        let imaginary = self.read_double()?;
+        let real = self.read_double()?.into();
+        let imaginary = self.read_double()?.into();
         Ok(data::Complex { real, imaginary })
     }
 
@@ -332,7 +332,9 @@ where
         for i in 0..len {
             data[i] = self.read_complex()?;
         }
-        Ok(self.arena.alloc(SexpKind::Complex(data).into()))
+        Ok(self
+            .arena
+            .alloc(SexpKind::Complex(data::RVec::new(data)).into()))
     }
 
     fn read_vecsxp(

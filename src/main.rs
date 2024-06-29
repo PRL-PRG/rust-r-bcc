@@ -69,22 +69,22 @@ fn noopt_bench() {
         data: orig,
     } = file.read_rds().unwrap();
 
-    let file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
-    let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult {
-        header: _,
-        data: cmp,
-    } = file.read_rds().unwrap();
+    //let file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
+    //let file = RDSReader::new(UnsafeCell::new(file), &arena);
+    //let RDSResult {
+        //header: _,
+        //data: cmp,
+    //} = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
         println!("{orig}");
         unreachable!()
     };
 
-    let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
-        println!("{cmp}");
-        unreachable!()
-    };
+    //let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
+        //println!("{cmp}");
+        //unreachable!()
+    //};
 
     assert!(orig.hash_frame.data.is_some());
 
@@ -93,7 +93,6 @@ fn noopt_bench() {
     let mut fails = 0;
     let all = orig.hash_frame.env.len();
     let mut compiler = Compiler::new_options(0, &arena);
-    //compiler.set_baseenv(env);
 
     let comp_start = Instant::now();
     for key in orig.hash_frame.env.keys() {
@@ -107,7 +106,8 @@ fn noopt_bench() {
             }
         };
         let res = compiler.cmpfun(closure);
-        let corr_closure = cmp.hash_frame.get(&key).unwrap();
+        std::hint::black_box(res);
+        /*let corr_closure = cmp.hash_frame.get(&key).unwrap();
         let corr_closure = match &corr_closure.kind {
             SexpKind::Closure(closure) => closure,
             SexpKind::Nil => panic!(),
@@ -128,7 +128,7 @@ fn noopt_bench() {
                 println!("My:\n{res}\n");
                 println!("Correct:\n{corr_closure}\n");
             }
-        }
+        }*/
     }
 
     eprintln!("{correct} / {all} ({count}, {fails})");

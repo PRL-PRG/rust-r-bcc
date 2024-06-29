@@ -131,8 +131,8 @@ pub mod data {
 
     #[derive(Debug, PartialEq, Default)]
     pub struct Complex {
-        pub real: f64,
-        pub imaginary: f64,
+        pub real: Double,
+        pub imaginary: Double,
     }
 
     #[derive(Clone, Copy)]
@@ -246,9 +246,19 @@ pub mod data {
     }
 
     // This is needed because of the NA equality
-    #[derive(Debug, Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default)]
     pub struct Double {
         pub data: f64,
+    }
+
+    impl std::fmt::Debug for Double {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if f.alternate() {
+                write!(f, "{:#?}", self.data)
+            } else {
+                write!(f, "{:?}", self.data)
+            }
+        }
     }
 
     impl Into<f64> for Double {
@@ -581,7 +591,7 @@ pub enum SexpKind<'a> {
     Logic(&'a [data::Logic]),
     Real(data::RVec<'a, data::Double>),
     Int(data::RVec<'a, i32>),
-    Complex(&'a [data::Complex]),
+    Complex(data::RVec<'a, data::Complex>),
     Str(data::RVec<'a, &'a str>),
     Vec(&'a [&'a Sexp<'a>]),
 

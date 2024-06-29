@@ -189,8 +189,8 @@ pub trait RDSWriter<'a>: Write {
                 self.write_len(complexes.len())?;
 
                 for val in complexes.iter() {
-                    self.write_double(val.real)?;
-                    self.write_double(val.imaginary)?;
+                    self.write_double(val.real.data)?;
+                    self.write_double(val.imaginary.data)?;
                 }
                 Ok(())
             }
