@@ -53,6 +53,28 @@ const MATH1_FUNCS: [&str; 24] = [
     "cosh", "sinh", "tanh", "acosh", "asinh", "atanh", "lgamma", "gamma", "digamma", "trigamma",
     "cospi", "sinpi", "tanpi",
 ];
+const SAFE_BASE_INTERNALS: [&str; 20] = [
+    "atan2",
+    "besselY",
+    "beta",
+    "choose",
+    "drop",
+    "inherits",
+    "is.vector",
+    "lbeta",
+    "lchoose",
+    "nchar",
+    "polyroot",
+    "typeof",
+    "vector",
+    "which.max",
+    "which.min",
+    "is.loaded",
+    "identical",
+    "match",
+    "rep.int",
+    "rep_len",
+];
 
 impl<'a> Compiler<'a> {
     pub fn new(arena: &'a Alloc<'a>) -> Self {
@@ -603,7 +625,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn handle_inline(&mut self, sym: &str, expr: &'a lang::Lang<'a>, info: InlineInfo) -> bool {
+    fn handle_inline(&mut self, sym: &'a str, expr: &'a lang::Lang<'a>, info: InlineInfo) -> bool {
         match sym {
             "if" => {
                 let cond = &expr.args[0].data;
@@ -1105,10 +1127,32 @@ impl<'a> Compiler<'a> {
 
                 true
             }
+            _ if info.base_var && SAFE_BASE_INTERNALS.contains(&sym) => {
+                self.cmp_simple_internal(sym, expr)
+            }
             _ if info.base_var && self.builtins.contains(sym) => self.cmp_builtin(expr, false),
             _ if info.base_var && self.specials.contains(sym) => self.cmp_special(expr),
             _ => false,
         }
+    }
+
+    fn inline_simple_internal_call(&mut self) -> Option<&'a lang::Lang<'a>> {
+        todo!()
+    }
+
+    fn cmp_simple_internal(&mut self, name: &'a str, expr: &'a lang::Lang<'a>) -> bool {
+        if self.any_dots(expr) {
+            return false;
+        }
+
+        let target = self.find_baseenv(name);
+        // there should be better check
+        if target.is_some() && !matches!(target.unwrap().kind, SexpKind::Closure(_)) {
+            return false;
+        }
+
+        self.inline_simple_internal_call();
+        true
     }
 
     fn cmp_builtin(&mut self, expr: &'a lang::Lang<'a>, internal: bool) -> bool {
@@ -1143,6 +1187,7 @@ impl<'a> Compiler<'a> {
             | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
 
             _ if MATH1_FUNCS.contains(&sym) => true,
+            _ if SAFE_BASE_INTERNALS.contains(&sym) => true,
             _ if self.builtins.contains(sym) => true,
             _ if self.specials.contains(sym) => true,
             _ => false,
@@ -1313,6 +1358,21 @@ impl<'a> Compiler<'a> {
     fn missing(&self, _sexp: &'a Sexp<'a>) -> bool {
         // TODO
         false
+    }
+
+    fn find_any_var(&self, name: &'a str) -> Option<&'a Sexp<'a>> {
+        if let Some(x) = self.env.find_local_var(name) {
+            return Some(x);
+        }
+
+        if let Some(x) = self.find_namespacebase(name) {
+            return Some(x);
+        }
+
+        if let Some(x) = self.find_baseenv(name) {
+            return Some(x);
+        }
+        None
     }
 
     fn find_baseenv(&self, name: &'a str) -> Option<&'a Sexp<'a>> {

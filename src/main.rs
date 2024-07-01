@@ -72,8 +72,8 @@ fn noopt_bench() {
     //let file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
     //let file = RDSReader::new(UnsafeCell::new(file), &arena);
     //let RDSResult {
-        //header: _,
-        //data: cmp,
+    //header: _,
+    //data: cmp,
     //} = file.read_rds().unwrap();
 
     let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
@@ -82,8 +82,8 @@ fn noopt_bench() {
     };
 
     //let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
-        //println!("{cmp}");
-        //unreachable!()
+    //println!("{cmp}");
+    //unreachable!()
     //};
 
     assert!(orig.hash_frame.data.is_some());
@@ -258,8 +258,8 @@ fn bench() {
         if &res == corr_closure {
             correct += 1;
         } else {
-            //println!("fail {key}");
-            if *key == "print.AsIs" {
+            println!("fail {key}");
+            if *key == "single" {
                 println!("My compilation:\n{res}\n");
                 println!("Correct compilation:\n{corr_closure}");
             }
