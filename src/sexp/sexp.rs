@@ -291,7 +291,7 @@ pub mod data {
 pub mod lang {
     use std::collections::HashMap;
 
-    use crate::sexp::sexp_alloc::Alloc;
+    use crate::sexp::{bc::ConstPoolItem, sexp_alloc::Alloc};
 
     #[derive(Debug, Clone)]
     pub struct Sym<'a> {
@@ -385,6 +385,22 @@ pub mod lang {
                 formals,
                 body,
                 environment,
+            }
+        }
+
+        pub fn body(&self) -> Option<&super::Sexp<'a>> {
+            match &self.body.kind {
+                super::SexpKind::Bc(bc) => {
+                    if bc.constpool.is_empty() {
+                        None
+                    } else {
+                        let ConstPoolItem::Sexp(res) = &bc.constpool[0] else {
+                            return None;
+                        };
+                        Some(res)
+                    }
+                }
+                _ => Some(self.body),
             }
         }
     }

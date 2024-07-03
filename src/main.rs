@@ -5,7 +5,7 @@ use rds::{
     rds_reader::{RDSReader, RDSReaderError},
     rds_writer::{RDSWriter, RDSWriterError},
 };
-use sexp::{bc::ConstPoolItem, sexp_alloc::Alloc};
+use sexp::sexp_alloc::Alloc;
 
 use crate::{
     compiler::compiler::Compiler,
@@ -259,7 +259,7 @@ fn bench() {
             correct += 1;
         } else {
             println!("fail {key}");
-            if *key == "single" {
+            if *key == "is.qr" {
                 println!("My compilation:\n{res}\n");
                 println!("Correct compilation:\n{corr_closure}");
             }
@@ -301,7 +301,7 @@ fn main() -> Result<(), MainError> {
 
     let compile = args[2] == "-c";
 
-    println!("start {sexp}");
+    println!("start {sexp:#?}");
 
     match &sexp.kind {
         sexp::sexp::SexpKind::Closure(cl) if compile => {

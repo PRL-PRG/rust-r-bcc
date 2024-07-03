@@ -53,6 +53,7 @@ const MATH1_FUNCS: [&str; 24] = [
     "cosh", "sinh", "tanh", "acosh", "asinh", "atanh", "lgamma", "gamma", "digamma", "trigamma",
     "cospi", "sinpi", "tanpi",
 ];
+
 const SAFE_BASE_INTERNALS: [&str; 20] = [
     "atan2",
     "besselY",
@@ -1136,7 +1137,20 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn inline_simple_internal_call(&mut self) -> Option<&'a lang::Lang<'a>> {
+    fn extract_simple_internal(
+        &mut self,
+        expr: &'a lang::Lang<'a>,
+        def: &'a lang::Closure<'a>,
+    ) -> Option<&'a lang::Lang<'a>> {
+        // get body
+        println!("{def:?}");
+        let body = def.body()?;
+        let body = match &body.kind {
+            SexpKind::Lang(lang) if matches!(lang.target, lang::Target::Sym(lang::Sym { data : "{" })) => {
+                &lang.args[0].data
+            }
+            _ => body,
+        };
         todo!()
     }
 
@@ -1145,14 +1159,23 @@ impl<'a> Compiler<'a> {
             return false;
         }
 
+        // this should been changed to take account
+        // different enviroments
         let target = self.find_baseenv(name);
         // there should be better check
-        if target.is_some() && !matches!(target.unwrap().kind, SexpKind::Closure(_)) {
+        if target.is_some() {
             return false;
         }
 
-        self.inline_simple_internal_call();
-        true
+        let SexpKind::Closure(def) = &target.unwrap().kind else {
+            return false;
+        };
+
+        let Some(simple_inter) = self.extract_simple_internal(expr, def) else {
+            return false;
+        };
+
+        self.cmp_builtin(simple_inter, true)
     }
 
     fn cmp_builtin(&mut self, expr: &'a lang::Lang<'a>, internal: bool) -> bool {
