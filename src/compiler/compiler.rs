@@ -1143,14 +1143,55 @@ impl<'a> Compiler<'a> {
         def: &'a lang::Closure<'a>,
     ) -> Option<&'a lang::Lang<'a>> {
         // get body
-        println!("{def:?}");
         let body = def.body()?;
         let body = match &body.kind {
-            SexpKind::Lang(lang) if matches!(lang.target, lang::Target::Sym(lang::Sym { data : "{" })) => {
+            SexpKind::Lang(lang)
+                if matches!(lang.target, lang::Target::Sym(lang::Sym { data: "{" })) =>
+            {
                 &lang.args[0].data
             }
             _ => body,
         };
+
+        let SexpKind::Lang(lang) = &body.kind else {
+            return None;
+        };
+
+        // this should always hold since this fully depends on my implementation
+        assert!(matches!(
+            lang.target,
+            lang::Target::Sym(lang::Sym { data: ".Internal" })
+        ));
+
+        let icall = lang.args[0].data;
+        let formals = def.formals;
+
+        // formals are formals and actuals are paramenters from expr
+
+        // 1. fixup params
+        //    to fixup you need to find dots and substitute them
+        //    if you cannot sub them just remove them
+        //    to sub them you just check the env and expand them
+        // 2. match params to formals
+
+        let mut dots_pos: Option<usize> = None;
+        for (index, arg) in expr.args.iter().enumerate() {
+            if let Some(sym) = &arg.tag {
+                if sym.data == "..." {
+                    dots_pos = Some(index);
+                    break;
+                }
+            }
+        }
+
+        let dots = self.find_any_var("...");
+
+        // named like this because of the GNU R
+        // and I dont want to make error in translation
+        let actuals = if dots_pos.is_some() && dots.is_some() {
+
+        }
+
         todo!()
     }
 
