@@ -414,6 +414,7 @@ impl<'a> Compiler<'a> {
     ) {
         if full.args.len() != 2 || self.dots_or_missing(&full.args) {
             self.cmp_builtin(full, false);
+            return;
         }
         let taicall = self.context.tailcall;
         self.context.tailcall = false;
@@ -438,6 +439,7 @@ impl<'a> Compiler<'a> {
     fn cmp_prim1(&mut self, arg: &'a Sexp<'a>, full: &'a lang::Lang<'a>, op: BcOp) {
         if full.args.len() != 1 || self.dots_or_missing(&full.args) {
             self.cmp_builtin(full, false);
+            return;
         }
         let taicall = self.context.tailcall;
         self.context.tailcall = false;
@@ -706,6 +708,24 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.restore_current_expr(orig_loc);
 
                 true
+            }
+            "(" => {
+                if self.any_dots(expr) {
+                    self.cmp_builtin(expr, false)
+                } else if expr.args.len() != 1 {
+                    // here should be a warning
+                    self.cmp_builtin(expr, false)
+                } else if self.context.tailcall {
+                    self.context.tailcall = false;
+                    self.cmp(&expr.args[0].data, false, true);
+                    self.code_buffer.add_instr(BcOp::VISIBLE_OP);
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                    self.context.tailcall = true;
+                    true
+                } else {
+                    self.cmp(&expr.args[0].data, false, true);
+                    true
+                }
             }
             "<-" if expr.args.len() == 2 && matches!(&expr.args[0].data.kind, SexpKind::Sym(_)) => {
                 let tailcall = self.context.tailcall;
@@ -1346,7 +1366,6 @@ impl<'a> Compiler<'a> {
         let actuals = data::List { data: actuals };
         let res = lang::Lang::new(lang::Target::Sym(lang::Sym::new(target_sym_str)), actuals);
 
-
         Some(self.arena.alloc(res))
     }
 
@@ -1362,7 +1381,6 @@ impl<'a> Compiler<'a> {
         if target.is_none() {
             return false;
         }
-        //println!("simple internal {name}");
 
         let SexpKind::Closure(def) = &target.unwrap().kind else {
             return false;
@@ -2081,45 +2099,47 @@ mod tests {
         }"
     ];
 
+    test_fun_default![xor, "function(x, y) (x | y) & !(x & y)"];
+
     test_fun_noopt![
         tmp_test,
         "
         function (frame, rownames.force = NA)
-{
-    if (!is.data.frame(frame))
-        return(as.matrix(frame))
-    d <- dim(frame)
-    rn <- if (isFALSE(rownames.force))
-        NULL
-    else if (isTRUE(rownames.force))
-        row.names(frame)
-    else if (.row_names_info(frame) <= 0L)
-        NULL
-    else row.names(frame)
-    for (i in seq_len(d[2L])) {
-        xi <- frame[[i]]
-        if (is.integer(xi) || is.numeric(xi))
-            next
-        if (is.logical(xi) || is.factor(xi)) {
-            frame[[i]] <- as.integer(xi)
-            next
+        {
+            if (!is.data.frame(frame))
+                return(as.matrix(frame))
+            d <- dim(frame)
+            rn <- if (isFALSE(rownames.force))
+                NULL
+            else if (isTRUE(rownames.force))
+                row.names(frame)
+            else if (.row_names_info(frame) <= 0L)
+                NULL
+            else row.names(frame)
+            for (i in seq_len(d[2L])) {
+                xi <- frame[[i]]
+                if (is.integer(xi) || is.numeric(xi))
+                    next
+                if (is.logical(xi) || is.factor(xi)) {
+                    frame[[i]] <- as.integer(xi)
+                    next
+                }
+                if (is.character(xi)) {
+                    frame[[i]] <- as.integer(factor(xi))
+                    next
+                }
+                frame[[i]] <- if (isS4(xi))
+                    methods::as(xi, \"numeric\")
+                else as.numeric(xi)
+            }
+            intOK <- all(unlist(lapply(frame, is.integer)))
+            x <- matrix(if (intOK)
+                NA_integer_
+            else NA_real_, nrow = d[1L], ncol = d[2L], dimnames = list(rn,
+                names(frame)))
+            for (i in seq_len(d[2L])) x[, i] <- frame[[i]]
+            x
         }
-        if (is.character(xi)) {
-            frame[[i]] <- as.integer(factor(xi))
-            next
-        }
-        frame[[i]] <- if (isS4(xi))
-            methods::as(xi, \"numeric\")
-        else as.numeric(xi)
-    }
-    intOK <- all(unlist(lapply(frame, is.integer)))
-    x <- matrix(if (intOK)
-        NA_integer_
-    else NA_real_, nrow = d[1L], ncol = d[2L], dimnames = list(rn,
-        names(frame)))
-    for (i in seq_len(d[2L])) x[, i] <- frame[[i]]
-    x
-}
         "
     ];
 }
