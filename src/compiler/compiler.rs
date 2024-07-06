@@ -593,6 +593,10 @@ impl<'a> Compiler<'a> {
         false
     }
 
+    fn is_builtin_internal(&self, name: &'a str) -> bool {
+        self.internals.contains(name)// && self.builtins.contains(name)
+    }
+
     fn try_inline(&mut self, expr: &'a lang::Lang<'a>) -> bool {
         let sym = match &expr.target {
             lang::Target::Lang(_) => return false,
@@ -1117,7 +1121,7 @@ impl<'a> Compiler<'a> {
                     } else {
                         return self.cmp_special(expr);
                     };
-                    if self.internals.contains(&name.data) {
+                    if self.is_builtin_internal(name.data) {
                         self.cmp_builtin(lang, true)
                     } else {
                         return self.cmp_special(expr);
@@ -1394,6 +1398,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn cmp_builtin(&mut self, expr: &'a lang::Lang<'a>, internal: bool) -> bool {
+        if self.dots_or_missing(&expr.args) {
+            return false;
+        }
         let index = self.code_buffer.add_const((&expr.target).into());
 
         if internal {
@@ -2098,8 +2105,23 @@ mod tests {
             f(x);
         }"
     ];
-
+    test_fun_default![
+        gettext,
+        "function (..., domain = NULL, trim = TRUE) {
+            char <- unlist(lapply(list(...), as.character))
+            .Internal(gettext(domain, char, trim))
+        }"
+    ];
     test_fun_default![xor, "function(x, y) (x | y) & !(x & y)"];
+    test_fun_default![
+        vapply,
+        "function (X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE) {
+            FUN <- match.fun(FUN)
+            if (!is.vector(X) || is.object(X))
+                X <- as.list(X)
+            .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))
+        }"
+    ];
 
     test_fun_noopt![
         tmp_test,
