@@ -121,6 +121,10 @@ pub mod data {
             let tag = Some(tag);
             Self { tag, data }
         }
+
+        pub fn strip_tag(&self) -> Self {
+            Self::new(self.data)
+        }
     }
 
     impl<'a> From<&'a Sexp<'a>> for TaggedSexp<'a> {

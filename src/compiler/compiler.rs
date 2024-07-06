@@ -1,4 +1,7 @@
-use std::{cell::UnsafeCell, collections::HashSet};
+use std::{
+    cell::UnsafeCell,
+    collections::{HashMap, HashSet},
+};
 
 use crate::sexp::{
     bc::{Bc, BcOp, ConstPoolItem},
@@ -1137,8 +1140,119 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn match_args(
+        def: &'a lang::Closure<'a>,
+        args: &'a data::List<'a>,
+        dots: &[data::TaggedSexp<'a>],
+        dots_pos: usize,
+    ) -> HashMap<&'a str, data::TaggedSexp<'a>> {
+        let mut res: Vec<Option<data::TaggedSexp<'a>>> = vec![];
+        res.resize(def.formals.len(), None);
+
+        let mut used: Vec<bool> = vec![];
+        used.resize(args.len() + dots.len(), false);
+
+        // exact match
+        for (target_index, formal_val) in def.formals.iter().enumerate() {
+            if formal_val.name.data == "..." {
+                continue;
+            }
+            for (source_index, arg_val) in args[0..dots_pos]
+                .iter()
+                .chain(dots.iter())
+                .chain(args[dots_pos..].iter())
+                .enumerate()
+            {
+                if Some(&formal_val.name) == arg_val.tag {
+                    if used[source_index] {
+                        panic!()
+                    }
+                    used[source_index] = true;
+                    res[target_index] = Some(data::TaggedSexp::new_with_tag(
+                        &arg_val.data,
+                        &formal_val.name,
+                    ));
+                }
+            }
+        }
+
+        // partial match
+        let mut seendots = false;
+        for (target_index, formal_val) in def.formals.iter().enumerate() {
+            // after the dots in formal are reached
+            // exact match is enfoced
+            if formal_val.name.data == "..." {
+                seendots = true;
+                continue;
+            }
+            for (source_index, arg_val) in args[0..dots_pos]
+                .iter()
+                .chain(dots.iter())
+                .chain(args[dots_pos..].iter())
+                .enumerate()
+            {
+                if used[source_index] {
+                    continue;
+                }
+                let Some(arg_tag) = arg_val.tag else {
+                    continue;
+                };
+                if formal_val.name.data == arg_tag.data
+                    || (!seendots && &formal_val.name.data[0..arg_tag.data.len()] == arg_tag.data)
+                {
+                    used[source_index] = true;
+                    res[target_index] = Some(data::TaggedSexp::new_with_tag(
+                        &arg_val.data,
+                        &formal_val.name,
+                    ));
+                }
+            }
+        }
+
+        // order match
+        let mut target_index = 0;
+        let mut source_iter = args[0..dots_pos]
+            .iter()
+            .chain(dots.iter())
+            .chain(args[dots_pos..].iter())
+            .enumerate()
+            .peekable();
+        while target_index < def.formals.len() && source_iter.peek().is_some() {
+            let (source_index, source_val) = source_iter.peek().unwrap();
+            if def.formals[target_index].name.data == "..." {
+                break;
+            } else if res[target_index].is_some() {
+                target_index += 1;
+                continue;
+            } else if used[*source_index] || source_val.tag.is_some() {
+                source_iter.next();
+                continue;
+            } else {
+                let name = &def.formals[target_index].name;
+                res[target_index] = Some(data::TaggedSexp::new_with_tag(source_val.data, name));
+                used[*source_index] = true;
+                target_index += 1;
+                source_iter.next();
+            }
+        }
+
+        // not all implemented
+        assert!(used.iter().all(|x| *x));
+
+        //println!("{:?}", res);
+
+        let res: HashMap<&'a str, data::TaggedSexp<'a>> =
+            HashMap::from_iter(res.into_iter().filter(|x| x.is_some()).map(|x| {
+                let tmp = x.unwrap();
+                (tmp.tag.unwrap().data, tmp)
+            }));
+
+        return res;
+    }
+
     fn extract_simple_internal(
         &mut self,
+        target_sym_str: &'a str,
         expr: &'a lang::Lang<'a>,
         def: &'a lang::Closure<'a>,
     ) -> Option<&'a lang::Lang<'a>> {
@@ -1163,8 +1277,11 @@ impl<'a> Compiler<'a> {
             lang::Target::Sym(lang::Sym { data: ".Internal" })
         ));
 
-        let icall = lang.args[0].data;
-        let formals = def.formals;
+        let icall = lang.args.data[0].data;
+
+        let SexpKind::Lang(ref icall) = icall.kind else {
+            unreachable!()
+        };
 
         // formals are formals and actuals are paramenters from expr
 
@@ -1186,13 +1303,51 @@ impl<'a> Compiler<'a> {
 
         let dots = self.find_any_var("...");
 
-        // named like this because of the GNU R
-        // and I dont want to make error in translation
-        let actuals = if dots_pos.is_some() && dots.is_some() {
+        let tmp_empty = [];
+        // this are parameters with the dots spliced in
+        //let actuals: <dyn Iterator<Item = &data::TaggedSexp<'a>>> =
+        let (dots_pos, dots): (usize, &[data::TaggedSexp<'a>]) = if let Some(dots_pos) = dots_pos {
+            if dots.is_none() {
+                (0, &tmp_empty)
+            } else {
+                match &dots.unwrap().kind {
+                    SexpKind::List(list) => (dots_pos, list.data),
+                    _ => (0, &tmp_empty),
+                }
+            }
+        } else {
+            (0, &tmp_empty)
+        };
 
+        let matched = Self::match_args(def, &expr.args, dots, dots_pos);
+
+        let actuals = self.arena.alloc_slice_fill_with(icall.args.len(), |_| {
+            data::TaggedSexp::new(self.arena.missing)
+        });
+
+        for (index, arg) in icall.args.iter().enumerate() {
+            match &arg.data.kind {
+                SexpKind::Sym(sym) => {
+                    if let Some(data) = matched.get(sym.data) {
+                        actuals[index] = data.clone().strip_tag();
+                        continue;
+                    }
+                    let tmp = def
+                        .formals
+                        .iter()
+                        .find(|x| &x.name == sym)
+                        .map(|x| data::TaggedSexp::new_with_tag(x.value, &x.name));
+                    actuals[index] = tmp.unwrap_or_else(|| self.arena.missing.into()).strip_tag();
+                }
+                _ => actuals[index] = arg.clone(),
+            }
         }
 
-        todo!()
+        let actuals = data::List { data: actuals };
+        let res = lang::Lang::new(lang::Target::Sym(lang::Sym::new(target_sym_str)), actuals);
+
+
+        Some(self.arena.alloc(res))
     }
 
     fn cmp_simple_internal(&mut self, name: &'a str, expr: &'a lang::Lang<'a>) -> bool {
@@ -1204,15 +1359,16 @@ impl<'a> Compiler<'a> {
         // different enviroments
         let target = self.find_baseenv(name);
         // there should be better check
-        if target.is_some() {
+        if target.is_none() {
             return false;
         }
+        //println!("simple internal {name}");
 
         let SexpKind::Closure(def) = &target.unwrap().kind else {
             return false;
         };
 
-        let Some(simple_inter) = self.extract_simple_internal(expr, def) else {
+        let Some(simple_inter) = self.extract_simple_internal(name, expr, def) else {
             return false;
         };
 
