@@ -1205,6 +1205,43 @@ impl<'a> Compiler<'a> {
 
                 true
             }
+            ".Call" => {
+                // comment in orig says
+                // this should match DOTCALL_MAX in eval.c
+                let nargsmax = 16;
+                // is.null(names(e)) is missing
+                if self.dots_or_missing(&expr.args)
+                    || expr.args.len() < 1
+                    || expr.args.len() > nargsmax + 1
+                {
+                    return self.cmp_builtin(expr, false);
+                }
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(expr.args[0].data, false, true);
+                self.context.tailcall = tailcall;
+
+                let nargs = expr.args.len() - 1;
+                if nargs > 0 {
+                    let tmp = CompilerContext::new_arg(&self.context);
+                    let orig = std::mem::replace(&mut self.context, tmp);
+                    for arg in expr.args[1..].iter() {
+                        self.cmp(arg.data, false, true);
+                    }
+
+                    _ = std::mem::replace(&mut self.context, orig);
+                }
+
+                let index = self.code_buffer.add_const_lang(expr);
+                self.code_buffer
+                    .add_instr_n(BcOp::DOTCALL_OP, &[index, nargs as i32]);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
+            }
             _ if info.base_var && SAFE_BASE_INTERNALS.contains(&sym) => {
                 self.cmp_simple_internal(sym, expr)
             }
@@ -2194,6 +2231,14 @@ mod tests {
             if (isS4(x))
                 methods::is(x, what)
             else all(class(x) %in% what)
+        }"
+    ];
+    test_fun_default![
+        remove_task_callback,
+        "function (id){
+            if (!is.character(id))
+                id <- as.integer(id)
+            .Call(.C_R_removeTaskCallback, id)
         }"
     ];
 

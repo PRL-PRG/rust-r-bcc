@@ -1,0 +1,9 @@
+---
+source: src/compiler/compiler.rs
+expression: compiler.warnings
+---
+[
+    VariableDoesNotExist(
+        ".C_R_removeTaskCallback",
+    ),
+]

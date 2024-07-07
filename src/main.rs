@@ -259,7 +259,7 @@ fn bench() {
             correct += 1;
         } else {
             println!("fail {key}");
-            if *key == "isa" {
+            if *key == "gc" {
                 println!("My compilation:\n{res}\n");
                 println!("Correct compilation:\n{corr_closure}");
             }
