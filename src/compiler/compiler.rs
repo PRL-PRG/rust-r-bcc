@@ -2135,6 +2135,17 @@ mod tests {
             .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))
         }"
     ];
+    test_fun_default![
+        for_endloopctx,
+        "function (pars){
+            for (p in pars) {
+              prompt <- \"... (a list): \"
+              args <- c(args, eval(parse(prompt = prompt)))
+            }
+            .Internal(.invokeRestart(r, args))
+        }"
+    ];
+
 
     test_fun_noopt![
         tmp_test,
