@@ -295,14 +295,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             lang::Target::Sym(sym) => {
-                let index = self.code_buffer.add_const(sym.into());
-                self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
-                self.cmp_args(&call.args);
-                let index = self.code_buffer.add_const(call.into());
-                self.code_buffer.add_instr2(BcOp::CALL_OP, index);
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
+                self.cmp_call_sym_fun(call, sym, &call.args);
             }
         };
 
@@ -312,7 +305,23 @@ impl<'a> Compiler<'a> {
         std::mem::swap(&mut self.code_buffer.current_expr, &mut sexp_tmp);
     }
 
-    fn cmp_args(&mut self, args: &'a data::List<'a>) {
+    fn cmp_call_sym_fun(
+        &mut self,
+        orig: &'a lang::Lang<'a>,
+        sym: &'a lang::Sym<'a>,
+        args: &[data::TaggedSexp<'a>],
+    ) {
+        let index = self.code_buffer.add_const(sym.into());
+        self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
+        self.cmp_args(args);
+        let index = self.code_buffer.add_const(orig.into());
+        self.code_buffer.add_instr2(BcOp::CALL_OP, index);
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+    }
+
+    fn cmp_args(&mut self, args: &[data::TaggedSexp<'a>]) {
         let tmp = CompilerContext::new_promise(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
@@ -994,6 +1003,40 @@ impl<'a> Compiler<'a> {
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
+                true
+            }
+            "::" | ":::" => {
+                if self.dots_or_missing(&expr.args) || expr.args.len() != 2 {
+                    return false;
+                }
+
+                if !matches!(expr.args[0].data.kind, SexpKind::Sym(_))
+                    || !matches!(expr.args[1].data.kind, SexpKind::Sym(_))
+                {
+                    return false;
+                }
+
+                let lang::Target::Sym(ref sym) = expr.target else {
+                    unreachable!();
+                };
+
+                let SexpKind::Sym(ref a) = expr.args[0].data.kind else {
+                    unreachable!()
+                };
+                let SexpKind::Sym(ref b) = expr.args[1].data.kind else {
+                    unreachable!()
+                };
+
+                let a = data::RVec::new(self.arena.alloc_slice_clone(&[a.data]));
+                let b = data::RVec::new(self.arena.alloc_slice_clone(&[b.data]));
+
+                let str_args: [data::TaggedSexp<'a>; 2] = [
+                    data::TaggedSexp::new(self.arena.alloc(SexpKind::Str(a).into())),
+                    data::TaggedSexp::new(self.arena.alloc(SexpKind::Str(b).into())),
+                ];
+
+                self.cmp_call_sym_fun(expr, sym, &str_args);
+
                 true
             }
             "break" => match &self.context.loop_ctx {
@@ -2145,7 +2188,14 @@ mod tests {
             .Internal(.invokeRestart(r, args))
         }"
     ];
-
+    test_fun_default![
+        isa,
+        "function (x, what) {
+            if (isS4(x))
+                methods::is(x, what)
+            else all(class(x) %in% what)
+        }"
+    ];
 
     test_fun_noopt![
         tmp_test,
