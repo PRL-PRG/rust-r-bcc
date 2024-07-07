@@ -80,6 +80,12 @@ const SAFE_BASE_INTERNALS: [&str; 20] = [
     "rep_len",
 ];
 
+// This is a hack because from what I have seen I was not able to
+// query only internals which have their internal set to builtin
+// so these are the values from names.c that I found fall into the
+// internal but are not builtin according to is.builtin.internal (10 in eval)
+const NON_BUILTIN_INTERNAL: [&str; 3] = ["eapply", "lapply", "vapply"];
+
 impl<'a> Compiler<'a> {
     pub fn new(arena: &'a Alloc<'a>) -> Self {
         Self {
@@ -594,7 +600,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn is_builtin_internal(&self, name: &'a str) -> bool {
-        self.internals.contains(name)// && self.builtins.contains(name)
+        self.internals.contains(name) && !NON_BUILTIN_INTERNAL.contains(&name)
     }
 
     fn try_inline(&mut self, expr: &'a lang::Lang<'a>) -> bool {
@@ -899,6 +905,7 @@ impl<'a> Compiler<'a> {
                     self.cmp_for_body(true, call_idx, body, index);
 
                     self.code_buffer.put_label(ljmpend_label);
+                    self.code_buffer.add_instr2(BcOp::ENDLOOPCNTXT_OP, 1);
 
                     self.context.need_returnjmp = orig_ret;
                 }
@@ -2119,6 +2126,12 @@ mod tests {
             FUN <- match.fun(FUN)
             if (!is.vector(X) || is.object(X))
                 X <- as.list(X)
+            .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))
+        }"
+    ];
+    test_fun_default![
+        vapply_simple,
+        "function (X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE) {
             .Internal(vapply(X, FUN, FUN.VALUE, USE.NAMES))
         }"
     ];
