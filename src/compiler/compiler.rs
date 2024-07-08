@@ -1812,7 +1812,6 @@ mod tests {
 
     use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
 
-
     macro_rules! test_fun_noopt {
         ( $name:ident, $code:expr) => {
             mod $name {
@@ -1888,6 +1887,7 @@ mod tests {
     }
 
     static SETUP: Once = Once::new();
+    static mut DONE_CHECK: bool = false;
     fn setup() {
         let path_env = "temp/test_compiler_env.dat";
         SETUP.call_once(|| {
@@ -1900,6 +1900,7 @@ mod tests {
                 .spawn()
                 .unwrap();
             assert!(command.wait().unwrap().success());
+            unsafe { DONE_CHECK = true }
         })
     }
 
@@ -1916,8 +1917,6 @@ mod tests {
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
                     let path_comp = path_comp.as_str();
-                    //let path_env = format!("temp/{}_compiler_env.dat", stringify!($name));
-                    //let path_env = path_env.as_str();
                     let path_env = "temp/test_compiler_env.dat";
 
                     // input and output data serialized
@@ -1927,7 +1926,7 @@ mod tests {
                         .unwrap();
                     assert!(command.wait().unwrap().success());
 
-                    if !SETUP.is_completed() {
+                    if unsafe { !DONE_CHECK } {
                         setup();
                     }
 
