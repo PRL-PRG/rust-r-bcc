@@ -88,10 +88,6 @@ fn noopt_bench() {
 
     assert!(orig.hash_frame.data.is_some());
 
-    let mut count = 0;
-    let mut correct = 0;
-    let mut fails = 0;
-    let all = orig.hash_frame.env.len();
     let mut compiler = Compiler::new_options(0, &arena);
 
     let comp_start = Instant::now();
@@ -131,7 +127,6 @@ fn noopt_bench() {
         }*/
     }
 
-    eprintln!("{correct} / {all} ({count}, {fails})");
     println!(
         "{}s {}ms {}s {}ms",
         full_start.elapsed().as_secs_f32(),

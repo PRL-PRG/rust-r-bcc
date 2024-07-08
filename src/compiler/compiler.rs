@@ -1806,7 +1806,6 @@ mod tests {
     use super::*;
     use bumpalo::Bump;
     use std::cell::UnsafeCell;
-    use std::fs::File;
     use std::io::{BufWriter, Read, Write};
     use std::sync::Once;
 
@@ -1825,18 +1824,10 @@ mod tests {
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
                     let path_comp = path_comp.as_str();
-                    let mut command = std::process::Command::new("./create_serdata.R")
-                        .args(["-d", $code, path])
-                        .spawn()
-                        .unwrap();
-                    assert!(command.wait().unwrap().success());
-                    let mut command = std::process::Command::new("./create_serdata.R")
-                        .args([
-                            "-d",
-                            format!("compiler::cmpfun({}, options=list(optimize=0))", $code)
-                                .as_str(),
-                            path_comp,
-                        ])
+
+                    // input and output data serialized
+                    let mut command = std::process::Command::new("./create_testdata.R")
+                        .args([$code, path, path_comp, "-noopt"])
                         .spawn()
                         .unwrap();
                     assert!(command.wait().unwrap().success());
@@ -1921,7 +1912,7 @@ mod tests {
 
                     // input and output data serialized
                     let mut command = std::process::Command::new("./create_testdata.R")
-                        .args([$code, path, path_comp])
+                        .args([$code, path, path_comp, "-opt"])
                         .spawn()
                         .unwrap();
                     assert!(command.wait().unwrap().success());
