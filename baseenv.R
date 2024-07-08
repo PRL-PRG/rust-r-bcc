@@ -2,6 +2,8 @@
 
 cargs = commandArgs(trailingOnly=TRUE);
 
+if (file.exists(cargs[[1]])) return(-1)
+
 basevars <- ls("package:base", all.names = TRUE)
 types <- sapply(basevars, \(x) typeof(get(x)))
 

@@ -1806,9 +1806,13 @@ mod tests {
     use super::*;
     use bumpalo::Bump;
     use std::cell::UnsafeCell;
+    use std::fs::File;
     use std::io::{BufWriter, Read, Write};
+    use std::sync::Once;
 
     use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
+
+    static SETUP: Once = Once::new();
 
     macro_rules! test_fun_noopt {
         ( $name:ident, $code:expr) => {
@@ -1884,6 +1888,21 @@ mod tests {
         };
     }
 
+    fn setup() {
+        let path_env = "temp/test_compiler_env.dat";
+        SETUP.call_once(|| {
+            if std::fs::metadata(path_env).is_ok_and(|x| x.is_file()) {
+                std::fs::remove_file(path_env).unwrap()
+            }
+            // base environment
+            let mut command = std::process::Command::new("./baseenv.R")
+                .args([path_env])
+                .spawn()
+                .unwrap();
+            assert!(command.wait().unwrap().success());
+        })
+    }
+
     macro_rules! test_fun_default {
         ( $name:ident, $code:expr) => {
             mod $name {
@@ -1897,33 +1916,20 @@ mod tests {
                     let path = path.as_str();
                     let path_comp = format!("temp/{}_compiler_corr.dat", stringify!($name));
                     let path_comp = path_comp.as_str();
-                    let path_env = format!("temp/{}_compiler_env.dat", stringify!($name));
-                    let path_env = path_env.as_str();
+                    //let path_env = format!("temp/{}_compiler_env.dat", stringify!($name));
+                    //let path_env = path_env.as_str();
+                    let path_env = "temp/test_compiler_env.dat";
 
-                    // input data serialized
-                    let mut command = std::process::Command::new("./create_serdata.R")
-                        .args(["-d", $code, path])
+                    // input and output data serialized
+                    let mut command = std::process::Command::new("./create_testdata.R")
+                        .args([$code, path, path_comp])
                         .spawn()
                         .unwrap();
                     assert!(command.wait().unwrap().success());
 
-                    // compiled data serialized
-                    let mut command = std::process::Command::new("./create_serdata.R")
-                        .args([
-                            "-d",
-                            format!("compiler::cmpfun({})", $code).as_str(),
-                            path_comp,
-                        ])
-                        .spawn()
-                        .unwrap();
-                    assert!(command.wait().unwrap().success());
-
-                    // base environment
-                    let mut command = std::process::Command::new("./baseenv.R")
-                        .args([path_env])
-                        .spawn()
-                        .unwrap();
-                    assert!(command.wait().unwrap().success());
+                    if !SETUP.is_completed() {
+                        setup();
+                    }
 
                     let file = std::fs::File::open(path).unwrap();
 
