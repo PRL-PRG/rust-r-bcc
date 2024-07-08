@@ -1812,7 +1812,6 @@ mod tests {
 
     use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
 
-    static SETUP: Once = Once::new();
 
     macro_rules! test_fun_noopt {
         ( $name:ident, $code:expr) => {
@@ -1888,6 +1887,7 @@ mod tests {
         };
     }
 
+    static SETUP: Once = Once::new();
     fn setup() {
         let path_env = "temp/test_compiler_env.dat";
         SETUP.call_once(|| {
