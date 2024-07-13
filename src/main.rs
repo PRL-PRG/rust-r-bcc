@@ -52,7 +52,7 @@ fn noopt_bench() {
     let path_env = "temp/benchenv_noopt.RDS";
 
     // base environment
-    let mut command = std::process::Command::new("./compile_base_package.R")
+    let mut command = std::process::Command::new("./scripts/compile_base_package.R")
         .args([path_env])
         .spawn()
         .unwrap();
@@ -140,7 +140,7 @@ fn bench() {
     let path_env = "temp/benchenv.RDS";
 
     // base environment
-    let mut command = std::process::Command::new("./compile_base_package.R")
+    let mut command = std::process::Command::new("./scripts/compile_base_package.R")
         .args([path_env])
         .spawn()
         .unwrap();

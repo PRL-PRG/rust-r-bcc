@@ -1826,7 +1826,7 @@ mod tests {
                     let path_comp = path_comp.as_str();
 
                     // input and output data serialized
-                    let mut command = std::process::Command::new("./create_testdata.R")
+                    let mut command = std::process::Command::new("./scripts/create_testdata.R")
                         .args([$code, path, path_comp, "-noopt"])
                         .spawn()
                         .unwrap();
@@ -1886,7 +1886,7 @@ mod tests {
                 std::fs::remove_file(path_env).unwrap()
             }
             // base environment
-            let mut command = std::process::Command::new("./baseenv.R")
+            let mut command = std::process::Command::new("./scripts/baseenv.R")
                 .args([path_env])
                 .spawn()
                 .unwrap();
@@ -1911,7 +1911,7 @@ mod tests {
                     let path_env = "temp/test_compiler_env.dat";
 
                     // input and output data serialized
-                    let mut command = std::process::Command::new("./create_testdata.R")
+                    let mut command = std::process::Command::new("./scripts/create_testdata.R")
                         .args([$code, path, path_comp, "-opt"])
                         .spawn()
                         .unwrap();

@@ -51,14 +51,6 @@ macro_rules! test {
     }
 }
 
-#[test]
-fn test_header() {
-    /*let data: Vec<u8> = vec![b'X', b'\n', 0, 0, 0, 2, 1, 1, 1, 1, 2, 2, 2, 2];
-    let data = Cursor::new(data);
-    let mut reader = BufReader::new(data);
-    reader.read_header().unwrap();*/
-}
-
 // c(1, 2)
 test![
     realsxp_02, 0x58, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x04, 0x03, 0x02, 0x00, 0x03, 0x05, 0x00, 0x00,
@@ -362,7 +354,7 @@ macro_rules! testR {
             fn reader() {
                 let path = format!("temp/{}.dat", stringify!($name));
                 let path = path.as_str();
-                let mut command = std::process::Command::new("./create_serdata.R")
+                let mut command = std::process::Command::new("./scripts/create_serdata.R")
                     .args(["-d", $code, path]).spawn().unwrap();
                 assert!(command.wait().unwrap().success());
 
@@ -381,7 +373,7 @@ macro_rules! testR {
             fn writer() {
                 let path = format!("temp/{}_writer.dat", stringify!($name));
                 let path = path.as_str();
-                let mut command = std::process::Command::new("./create_serdata.R")
+                let mut command = std::process::Command::new("./scripts/create_serdata.R")
                     .args(["-d", $code, path]).spawn().unwrap();
                 assert!(command.wait().unwrap().success());
             

@@ -4,7 +4,8 @@ This is implementation of compile server of GNU R bytecode done as a proof of co
 
 # Running
 To run tests
-```
+```bash
+mkdir temp # not necessary if it allready exists
 cargo test
 ```
 
