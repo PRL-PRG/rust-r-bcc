@@ -591,6 +591,72 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn cmp_assign(
+        &mut self,
+        lhs: &'a Sexp<'a>,
+        value: &'a Sexp<'a>,
+        orig: &'a lang::Lang<'a>,
+        super_assign: bool,
+    ) -> bool {
+        let Some(sym) = self.get_assigned_var(lhs) else {
+            return self.cmp_special(orig);
+        };
+        if super_assign && self.find_any_var(sym.data).is_none() {}
+        match &lhs.kind {
+            SexpKind::Sym(_) => {
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(value, false, true);
+                self.context.tailcall = tailcall;
+
+                let index = self.code_buffer.add_const(lhs.into());
+                if super_assign {
+                    self.code_buffer.add_instr2(BcOp::SETVAR2_OP, index);
+                } else {
+                    self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
+                }
+                true
+            }
+            //SexpKind::Lang(lang) => todo!(),
+            _ => self.cmp_special(orig),
+        }
+    }
+
+    fn cmp_complex_assign(
+        &mut self,
+        sym: &'a lang::Sym<'a>,
+        lhs: &'a lang::Lang<'a>,
+        value: &'a Sexp<'a>,
+        orig: &'a lang::Lang<'a>,
+        super_assign: bool,
+    ) -> bool {
+        let (start_op, end_op) = if super_assign {
+            (BcOp::STARTASSIGN2_OP, BcOp::ENDASSIGN2_OP)
+        } else {
+            if !self.var_exist(sym.data) {
+                self.warnings
+                    .push(Warning::VariableDoesNotExist(sym.data.to_string()))
+            }
+            (BcOp::STARTASSIGN_OP, BcOp::ENDASSIGN_OP)
+        };
+        if !self.context.top_level {
+            self.code_buffer.add_instr(BcOp::INCLNKSTK_OP)
+        }
+
+        let tailcall = self.context.tailcall;
+        self.context.tailcall = false;
+        self.cmp(value, false, true);
+        self.context.tailcall = tailcall;
+
+        let sym_index = self.code_buffer.add_const_sym(sym.into());
+
+        self.code_buffer.add_instr(start_op);
+
+        let flat = self.flattenPlace(lhs)
+        
+        true
+    }
+
     fn cmp_indicies(&mut self, indicies: &'a [data::TaggedSexp<'a>]) {
         for idx in indicies {
             self.cmp(&idx.data, true, true);
@@ -746,16 +812,9 @@ impl<'a> Compiler<'a> {
                     true
                 }
             }
-            "<-" if expr.args.len() == 2 && matches!(&expr.args[0].data.kind, SexpKind::Sym(_)) => {
-                let tailcall = self.context.tailcall;
-                self.context.tailcall = false;
-                self.cmp(&expr.args[1].data, false, true);
-                self.context.tailcall = tailcall;
-
-                let index = self.code_buffer.add_const(expr.args[0].data.into());
-                self.code_buffer.add_instr2(BcOp::SETVAR_OP, index);
-                true
-            }
+            "<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, false),
+            "<<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, true),
+            /*
             "<-" if expr.args.len() == 2
                 && false
                 && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
@@ -778,7 +837,7 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.add_instr2(BcOp::STARTASSIGN_OP, index);
 
                 true
-            }
+            }*/
             "+" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
                 true
@@ -1146,9 +1205,6 @@ impl<'a> Compiler<'a> {
                     .arena
                     .alloc(lang::Lang::new(target, self.arena.nil_list));
 
-                // before
-                // self.cmp(&lang.into(), false, true);
-
                 let orig = self.code_buffer.set_current_expr(ConstPoolItem::Lang(lang));
                 self.cmp_call(lang, true);
                 self.code_buffer.restore_current_expr(orig);
@@ -1510,7 +1566,7 @@ impl<'a> Compiler<'a> {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
+            "if" | "{" | "<-" | "<<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
             | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function"
             | "local" | "[[" | "[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&"
             | "|" | "!" | "&&" | "||" | "$" => true,
@@ -2235,6 +2291,13 @@ mod tests {
             if (!is.character(id))
                 id <- as.integer(id)
             .Call(.C_R_removeTaskCallback, id)
+        }"
+    ];
+    test_fun_default![
+        replace,
+        "function (x, list, values) {
+            x[list] <- values
+            x
         }"
     ];
 
