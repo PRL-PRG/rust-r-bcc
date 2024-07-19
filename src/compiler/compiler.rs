@@ -617,9 +617,38 @@ impl<'a> Compiler<'a> {
                 }
                 true
             }
-            //SexpKind::Lang(lang) => todo!(),
+            SexpKind::Lang(lang) => self.cmp_complex_assign(sym, lang, value, orig, super_assign),
             _ => self.cmp_special(orig),
         }
+    }
+
+    fn flatten_place(
+        &self,
+        lhs: &'a lang::Lang<'a>,
+    ) -> Vec<(&'a lang::Lang<'a>, &'a lang::Lang<'a>)> {
+        let mut orig_places = vec![];
+        let mut places = vec![];
+
+        let mut acc = lhs;
+
+        loop {
+            orig_places.push(acc);
+            let data = self.arena.alloc_slice_clone(&acc.args);
+            data[0] = data::TaggedSexp::new(self.arena.tmp_var);
+            let n_place = self
+                .arena
+                .alloc(lang::Lang::new(acc.target.clone(), data::List { data }));
+            places.push(n_place as &lang::Lang<'a>);
+            match &acc.args[0].data.kind {
+                SexpKind::Lang(lang) => acc = lang,
+                SexpKind::Sym(_) => break,
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+
+        places.into_iter().zip(orig_places.into_iter()).collect()
     }
 
     fn cmp_complex_assign(
@@ -650,11 +679,93 @@ impl<'a> Compiler<'a> {
 
         let sym_index = self.code_buffer.add_const_sym(sym.into());
 
-        self.code_buffer.add_instr(start_op);
+        self.code_buffer.add_instr2(start_op, sym_index);
 
-        let flat = self.flattenPlace(lhs)
-        
+        let places = self.flatten_place(lhs);
+        for (place, orig_place) in &places {
+            self.cmp_getter_call(place, orig_place)
+        }
+
+        //let tmp = CompilerContext::new_arg(&self.context);
+        //let orig = std::mem::replace(&mut self.context, tmp);
+        //_ = std::mem::replace(&mut self.context, orig);
+
         true
+    }
+
+    fn cmp_getter_call(&mut self, place: &'a lang::Lang<'a>, orig_place: &'a lang::Lang<'a>) {
+        let tmp = CompilerContext::new_call(&self.context, place);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        assert!(place.args.len() >= 1);
+
+        let curr_loc = self.code_buffer.set_current_expr(orig_place.into());
+
+        match &place.target {
+            lang::Target::Sym(sym) => {
+                if !self.try_getter_inline(place) {
+                    let sym_index = self.code_buffer.add_const_sym(sym.into());
+                    self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
+                    self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                    self.cmp_args(&place.args);
+                    let index = self.code_buffer.add_const_lang(place.into());
+                    self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
+                    self.code_buffer.add_instr(BcOp::SWAP_OP);
+                }
+            }
+            lang::Target::Lang(lang) => {
+                self.cmp_call(lang, true);
+                self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
+                self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                self.cmp_args(&place.args);
+                let index = self.code_buffer.add_const_lang(place.into());
+                self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
+                self.code_buffer.add_instr(BcOp::SWAP_OP);
+            }
+        }
+
+        self.code_buffer.restore_current_expr(curr_loc);
+        _ = std::mem::replace(&mut self.context, orig);
+    }
+
+    // most basic getter inline handler
+    fn try_getter_inline(&mut self, expr: &'a lang::Lang<'a>) -> bool {
+        let sym = match &expr.target {
+            lang::Target::Lang(_) => return false,
+            lang::Target::Sym(s) => s.data,
+        };
+
+        let info = self.get_inlineinfo(sym);
+
+        if info.is_none() {
+            return false;
+        }
+        match sym {
+            "$" => {
+                if self.any_dots(expr) || expr.args.len() != 2 {
+                    return false;
+                }
+                let SexpKind::Sym(sym) = &expr.args[1].data.kind else {
+                    return false;
+                };
+                let call_index = self.code_buffer.add_const_lang(expr.into());
+                let sym_index = self.code_buffer.add_const_sym(sym.into());
+                self.code_buffer.add_instr(BcOp::DUP2ND_OP);
+                self.code_buffer
+                    .add_instr_n(BcOp::DOLLAR_OP, &[call_index, sym_index]);
+                self.code_buffer.add_instr(BcOp::SWAP_OP);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn cmp_setter_call(
+        &mut self,
+        place: &lang::Lang<'a>,
+        orig: &'a lang::Lang<'a>,
+        value_expr: &'a Sexp<'a>,
+    ) {
     }
 
     fn cmp_indicies(&mut self, indicies: &'a [data::TaggedSexp<'a>]) {
@@ -1796,12 +1907,25 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn get_assigned_var(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {
+    fn get_assigned_var(&self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {
         match &sexp.kind {
             SexpKind::Sym(sym) => Some(sym),
             SexpKind::Lang(lang) => self.get_assigned_var(&lang.args[0].data),
             SexpKind::MissingArg => todo!(),
             _ => None,
+        }
+    }
+
+    fn get_assign_fun(&self, sexp: &'a Sexp<'a>) -> Option<lang::Target<'a>> {
+        match &sexp.kind {
+            SexpKind::Sym(sym) => {
+                // temp heap alloc
+                let n_sym = sym.data.to_string() + "<-";
+                let n_sym = lang::Sym::new(self.arena.alloc_str(n_sym.as_str()));
+                Some(lang::Target::Sym(n_sym))
+            },
+            SexpKind::Lang(lang) => todo!(),
+            _ => None
         }
     }
 
