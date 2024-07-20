@@ -2,8 +2,4 @@
 source: src/compiler/compiler.rs
 expression: compiler.warnings
 ---
-[
-    VariableDoesNotExist(
-        "*tmp*",
-    ),
-]
+[]
