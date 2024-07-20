@@ -84,7 +84,7 @@ const SAFE_BASE_INTERNALS: [&str; 20] = [
 // query only internals which have their internal set to builtin
 // so these are the values from names.c that I found fall into the
 // internal but are not builtin according to is.builtin.internal (10 in eval)
-const NON_BUILTIN_INTERNAL: [&str; 3] = ["eapply", "lapply", "vapply"];
+const NON_BUILTIN_INTERNAL: [&str; 4] = ["eapply", "lapply", "vapply", "NextMethod"];
 
 impl<'a> Compiler<'a> {
     pub fn new(arena: &'a Alloc<'a>) -> Self {
@@ -699,7 +699,6 @@ impl<'a> Compiler<'a> {
         if !self.context.top_level {
             self.code_buffer.add_instr(BcOp::DECLNKSTK_OP);
         }
-
 
         if self.context.tailcall {
             self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
@@ -2637,6 +2636,11 @@ mod tests {
             x[list] <- values
             x
         }"
+    ];
+    test_fun_default![
+        nextmethod,
+        "function (generic = NULL, object = NULL, ...)
+        .Internal(NextMethod(generic, object, ...))"
     ];
 
     test_fun_noopt![
