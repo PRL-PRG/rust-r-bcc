@@ -884,7 +884,6 @@ impl<'a> Compiler<'a> {
                     self.cmp_setter_dispatch(
                         BcOp::STARTSUBASSIGN_OP,
                         BcOp::DFLTSUBASSIGN_OP,
-                        afun,
                         place,
                         call,
                     )
@@ -913,7 +912,6 @@ impl<'a> Compiler<'a> {
         &mut self,
         start_op: BcOp,
         dflt_op: BcOp,
-        afun: lang::Sym<'a>,
         place: &'a lang::Lang<'a>,
         call: &'a lang::Lang<'a>,
     ) -> bool {
