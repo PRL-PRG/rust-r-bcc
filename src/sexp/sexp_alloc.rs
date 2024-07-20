@@ -15,6 +15,9 @@ pub struct Alloc<'a> {
     pub empty_env: &'a Sexp<'a>,
     pub na_string: &'a str,
     pub unbound: &'a Sexp<'a>,
+    pub tmp_var: &'a Sexp<'a>,
+    pub vtmp_var: &'a Sexp<'a>,
+    pub value_sym: &'a lang::Sym<'a>,
 
     pub empty_metadata: &'a MetaData<'a>,
 }
@@ -35,6 +38,11 @@ impl<'a> Alloc<'a> {
             empty_env: allocator.alloc(SexpKind::Environment(lang::Environment::Empty).into()),
             na_string: allocator.alloc_str("__NA__"),
             unbound: allocator.alloc(SexpKind::UnboundVal.into()),
+            tmp_var: allocator
+                .alloc(SexpKind::Sym(lang::Sym::new(allocator.alloc_str("*tmp*"))).into()),
+            vtmp_var: allocator
+                .alloc(SexpKind::Sym(lang::Sym::new(allocator.alloc_str("*vtmp*"))).into()),
+            value_sym: allocator.alloc(lang::Sym::new(allocator.alloc_str("value"))),
             empty_metadata: allocator.alloc(MetaData::default()),
         }
     }

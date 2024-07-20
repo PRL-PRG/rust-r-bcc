@@ -89,7 +89,7 @@ impl<'a> Sexp<'a> {
 }
 
 pub mod data {
-    use std::ops::Deref;
+    use std::ops::{Deref, DerefMut};
 
     use super::Sexp;
 
@@ -320,7 +320,7 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Target<'a> {
         Lang(&'a Lang<'a>), // expression
         Sym(Sym<'a>),       // named

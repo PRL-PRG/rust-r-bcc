@@ -617,9 +617,38 @@ impl<'a> Compiler<'a> {
                 }
                 true
             }
-            //SexpKind::Lang(lang) => todo!(),
+            SexpKind::Lang(lang) => self.cmp_complex_assign(sym, lang, value, orig, super_assign),
             _ => self.cmp_special(orig),
         }
+    }
+
+    fn flatten_place(
+        &self,
+        lhs: &'a lang::Lang<'a>,
+    ) -> Vec<(&'a lang::Lang<'a>, &'a lang::Lang<'a>)> {
+        let mut orig_places = vec![];
+        let mut places = vec![];
+
+        let mut acc = lhs;
+
+        loop {
+            orig_places.push(acc);
+            let data = self.arena.alloc_slice_clone(&acc.args);
+            data[0] = data::TaggedSexp::new(self.arena.tmp_var);
+            let n_place = self
+                .arena
+                .alloc(lang::Lang::new(acc.target.clone(), data::List { data }));
+            places.push(n_place as &lang::Lang<'a>);
+            match &acc.args[0].data.kind {
+                SexpKind::Lang(lang) => acc = lang,
+                SexpKind::Sym(_) => break,
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+
+        places.into_iter().zip(orig_places.into_iter()).collect()
     }
 
     fn cmp_complex_assign(
@@ -627,7 +656,7 @@ impl<'a> Compiler<'a> {
         sym: &'a lang::Sym<'a>,
         lhs: &'a lang::Lang<'a>,
         value: &'a Sexp<'a>,
-        orig: &'a lang::Lang<'a>,
+        _orig: &'a lang::Lang<'a>,
         super_assign: bool,
     ) -> bool {
         let (start_op, end_op) = if super_assign {
@@ -650,11 +679,287 @@ impl<'a> Compiler<'a> {
 
         let sym_index = self.code_buffer.add_const_sym(sym.into());
 
-        self.code_buffer.add_instr(start_op);
+        self.code_buffer.add_instr2(start_op, sym_index);
 
-        let flat = self.flattenPlace(lhs)
-        
+        let tmp = CompilerContext::new_arg(&self.context);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        let places = self.flatten_place(lhs);
+        for (place, orig_place) in places[1..].iter().rev() {
+            self.cmp_getter_call(place, orig_place)
+        }
+        self.cmp_setter_call(places[0].0, places[0].1, value);
+        for (place, orig_place) in &places[1..] {
+            self.cmp_setter_call(place, orig_place, self.arena.vtmp_var);
+        }
+
+        self.code_buffer.add_instr2(end_op, sym_index);
+        _ = std::mem::replace(&mut self.context, orig);
+
+        if !self.context.top_level {
+            self.code_buffer.add_instr(BcOp::DECLNKSTK_OP);
+        }
+
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+
         true
+    }
+
+    fn cmp_getter_call(&mut self, place: &'a lang::Lang<'a>, orig_place: &'a lang::Lang<'a>) {
+        let tmp = CompilerContext::new_call(&self.context, place);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        assert!(place.args.len() >= 1);
+
+        let curr_loc = self.code_buffer.set_current_expr(orig_place.into());
+
+        match &place.target {
+            lang::Target::Sym(sym) => {
+                if !self.try_getter_inline(place) {
+                    let sym_index = self.code_buffer.add_const_sym(sym.into());
+                    self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
+                    self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                    self.cmp_args(&place.args);
+                    let index = self.code_buffer.add_const_lang(place.into());
+                    self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
+                    self.code_buffer.add_instr(BcOp::SWAP_OP);
+                }
+            }
+            lang::Target::Lang(lang) => {
+                self.cmp_call(lang, true);
+                self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
+                self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                self.cmp_args(&place.args);
+                let index = self.code_buffer.add_const_lang(place.into());
+                self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
+                self.code_buffer.add_instr(BcOp::SWAP_OP);
+            }
+        }
+
+        self.code_buffer.restore_current_expr(curr_loc);
+        _ = std::mem::replace(&mut self.context, orig);
+    }
+
+    // most basic getter inline handler
+    fn try_getter_inline(&mut self, expr: &'a lang::Lang<'a>) -> bool {
+        let sym = match &expr.target {
+            lang::Target::Lang(_) => return false,
+            lang::Target::Sym(s) => s.data,
+        };
+
+        let info = self.get_inlineinfo(sym);
+
+        if info.is_none() {
+            return false;
+        }
+        match sym {
+            "$" => {
+                if self.any_dots(expr) || expr.args.len() != 2 {
+                    return false;
+                }
+                let SexpKind::Sym(sym) = &expr.args[1].data.kind else {
+                    return false;
+                };
+                let call_index = self.code_buffer.add_const_lang(expr.into());
+                let sym_index = self.code_buffer.add_const_sym(sym.into());
+                self.code_buffer.add_instr(BcOp::DUP2ND_OP);
+                self.code_buffer
+                    .add_instr_n(BcOp::DOLLAR_OP, &[call_index, sym_index]);
+                self.code_buffer.add_instr(BcOp::SWAP_OP);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn append_tagged_expr(
+        &self,
+        target: lang::Target<'a>,
+        args: &data::List<'a>,
+        tagged: data::TaggedSexp<'a>,
+    ) -> &'a lang::Lang<'a> {
+        let data = self
+            .arena
+            .alloc_slice_fill_with(args.len() + 1, |_| data::TaggedSexp::new(self.arena.nil));
+        for (i, val) in args.iter().cloned().chain([tagged].into_iter()).enumerate() {
+            data[i] = val
+        }
+        let args = data::List { data };
+        let acall = self.arena.alloc(lang::Lang::new(target, args));
+        acall
+    }
+
+    fn cmp_setter_call(
+        &mut self,
+        place: &'a lang::Lang<'a>,
+        orig_place: &'a lang::Lang<'a>,
+        value_expr: &'a Sexp<'a>,
+    ) {
+        let Some(afun) = self.get_assign_fun(&place.target) else {
+            unreachable!()
+        };
+
+        let acall = self.append_tagged_expr(
+            afun.clone(),
+            &place.args,
+            data::TaggedSexp::new_with_tag(value_expr, self.arena.value_sym),
+        );
+
+        let tmp = CompilerContext::new_call(&self.context, acall);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        let cexpr = self.append_tagged_expr(
+            afun.clone(),
+            &orig_place.args,
+            data::TaggedSexp::new_with_tag(value_expr, self.arena.value_sym),
+        );
+        let sloc = self.code_buffer.set_current_expr(cexpr.into());
+
+        match afun {
+            lang::Target::Sym(sym) => {
+                if !self.try_setter_inline(sym.clone(), place, orig_place, acall) {
+                    let sym: &'a lang::Sym<'a> = self.arena.alloc(sym);
+                    let sym_index = self.code_buffer.add_const_sym(sym.into());
+                    self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
+                    self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                    self.cmp_args(&place.args);
+                    let call_index = self.code_buffer.add_const_lang(acall.into());
+                    let value_index = self.code_buffer.add_const_sexp(value_expr.into());
+                    self.code_buffer
+                        .add_instr_n(BcOp::SETTER_CALL_OP, &[call_index, value_index]);
+                }
+            }
+            lang::Target::Lang(lang) => {
+                self.cmp_call(lang, true);
+
+                self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
+                self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
+                self.cmp_args(&place.args);
+
+                let call_index = self.code_buffer.add_const_lang(acall.into());
+                let value_index = self.code_buffer.add_const_sexp(value_expr.into());
+                self.code_buffer
+                    .add_instr_n(BcOp::SETTER_CALL_OP, &[call_index, value_index]);
+            }
+        }
+
+        self.code_buffer.restore_current_expr(sloc);
+
+        let _ = std::mem::replace(&mut self.context, orig);
+    }
+
+    fn try_setter_inline(
+        &mut self,
+        afun: lang::Sym<'a>,
+        place: &'a lang::Lang<'a>,
+        orig_place: &'a lang::Lang<'a>,
+        call: &'a lang::Lang<'a>,
+    ) -> bool {
+        let info = self.get_inlineinfo(afun.data);
+
+        if info.is_none() {
+            return false;
+        }
+
+        match afun.data {
+            "$<-" => {
+                if self.any_dots(place) || place.args.len() != 2 {
+                    return false;
+                }
+                let SexpKind::Sym(sym) = &place.args[1].data.kind else {
+                    return false;
+                };
+                let call_index = self.code_buffer.add_const_lang(call.into());
+                let sym_index = self.code_buffer.add_const_sym(sym.into());
+                self.code_buffer
+                    .add_instr_n(BcOp::DOLLARGETS_OP, &[call_index, sym_index]);
+                true
+            }
+            "[<-" => {
+                if self.dots_or_missing(&place.args) || place.args.len() < 2 {
+                    self.cmp_setter_dispatch(
+                        BcOp::STARTSUBASSIGN_OP,
+                        BcOp::DFLTSUBASSIGN_OP,
+                        place,
+                        call,
+                    )
+                } else {
+                    let nidx = place.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBASSIGN_OP, false),
+                        2 => (BcOp::MATSUBASSIGN_OP, false),
+                        _ => (BcOp::SUBASSIGN_N_OP, true),
+                    };
+                    self.cmp_subassign_dispatch(
+                        BcOp::STARTSUBASSIGN_N_OP,
+                        code,
+                        rank,
+                        afun,
+                        place,
+                        call,
+                    )
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn cmp_setter_dispatch(
+        &mut self,
+        start_op: BcOp,
+        dflt_op: BcOp,
+        place: &'a lang::Lang<'a>,
+        call: &'a lang::Lang<'a>,
+    ) -> bool {
+        if self.any_dots(place) {
+            return false;
+        }
+
+        let call_index = self.code_buffer.add_const_lang(call.into());
+        let end_label = self.code_buffer.make_label();
+        self.code_buffer
+            .add_instr_n(start_op, &[call_index, DEFLABEL]);
+        self.code_buffer.set_label(end_label);
+        if place.args.len() > 1 {
+            self.cmp_builtin_args(&place.args[1..], true)
+        }
+        self.code_buffer.add_instr(dflt_op);
+        self.code_buffer.put_label(end_label);
+        true
+    }
+
+    fn cmp_subassign_dispatch(
+        &mut self,
+        start_op: BcOp,
+        code: BcOp,
+        rank: bool,
+        afun: lang::Sym<'a>,
+        place: &'a lang::Lang<'a>,
+        call: &'a lang::Lang<'a>,
+    ) -> bool {
+        if self.dots_or_missing(&place.args) || place.args.len() < 2 {
+            // ohno
+            panic!()
+        } else {
+            let call_index = self.code_buffer.add_const_lang(call.into());
+            let label = self.code_buffer.make_label();
+            self.code_buffer
+                .add_instr_n(start_op, &[call_index, DEFLABEL]);
+            self.code_buffer.set_label(label);
+            self.cmp_indicies(&place.args[1..]);
+            if rank {
+                self.code_buffer
+                    .add_instr_n(code, &[call_index, (place.args.len() - 1) as i32]);
+            } else {
+                self.code_buffer.add_instr2(code, call_index);
+            }
+            self.code_buffer.put_label(label);
+            true
+        }
     }
 
     fn cmp_indicies(&mut self, indicies: &'a [data::TaggedSexp<'a>]) {
@@ -1796,11 +2101,44 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn get_assigned_var(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {
+    fn get_assigned_var(&self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {
         match &sexp.kind {
             SexpKind::Sym(sym) => Some(sym),
             SexpKind::Lang(lang) => self.get_assigned_var(&lang.args[0].data),
             SexpKind::MissingArg => todo!(),
+            _ => None,
+        }
+    }
+
+    fn get_assign_fun(&self, sexp: &'a lang::Target<'a>) -> Option<lang::Target<'a>> {
+        match &sexp {
+            lang::Target::Sym(sym) => {
+                // temp heap alloc
+                let n_sym = sym.data.to_string() + "<-";
+                let n_sym = lang::Sym::new(self.arena.alloc_str(n_sym.as_str()));
+                Some(lang::Target::Sym(n_sym))
+            }
+            lang::Target::Lang(lang) if lang.args.len() == 1 => {
+                let lang::Target::Sym(sym) = &lang.target else {
+                    return None;
+                };
+                if !matches!(sym.data, "::" | ":::") {
+                    return None;
+                }
+                match (&lang.args[0].data.kind, &lang.args[1].data.kind) {
+                    (SexpKind::Sym(_), SexpKind::Sym(function)) => {
+                        let n_sym = function.data.to_string() + "<-";
+                        let n_sym = lang::Sym::new(self.arena.alloc_str(n_sym.as_str()));
+                        let n_sym: &'a Sexp<'a> = self.arena.alloc(SexpKind::Sym(n_sym).into());
+                        let n_sym = data::TaggedSexp::new(n_sym);
+                        let data = self.arena.alloc_slice_clone(&[lang.args[0].clone(), n_sym]);
+                        let args = data::List { data };
+                        let n_lang = self.arena.alloc(lang::Lang::new(lang.target.clone(), args));
+                        Some(lang::Target::Lang(n_lang))
+                    }
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }
