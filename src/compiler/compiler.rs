@@ -825,7 +825,7 @@ impl<'a> Compiler<'a> {
                     let sym_index = self.code_buffer.add_const_sym(sym.into());
                     self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                    self.cmp_args(&place.args);
+                    self.cmp_args(&place.args[1..]);
                     let call_index = self.code_buffer.add_const_lang(acall.into());
                     let value_index = self.code_buffer.add_const_sexp(value_expr.into());
                     self.code_buffer
@@ -837,7 +837,7 @@ impl<'a> Compiler<'a> {
 
                 self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
                 self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                self.cmp_args(&place.args);
+                self.cmp_args(&place.args[1..]);
 
                 let call_index = self.code_buffer.add_const_lang(acall.into());
                 let value_index = self.code_buffer.add_const_sexp(value_expr.into());
@@ -1432,7 +1432,7 @@ impl<'a> Compiler<'a> {
                 let tmp = CompilerContext::new_function(&self.context, forms, body);
                 let orig = std::mem::replace(&mut self.context, tmp);
 
-                let comp_body = self.gen_code(body, None);
+                let comp_body = self.gen_code(body, self.code_buffer.get_current_expr());
                 let data = self.arena.alloc_slice_copy(&[
                     self.arena.alloc(SexpKind::List(forms.clone()).into()) as &'a Sexp<'a>,
                     self.arena.alloc(SexpKind::Bc(comp_body).into()) as &'a Sexp<'a>,
@@ -2562,17 +2562,15 @@ mod tests {
     test_fun_default![tmp, "function() print(1)"];
     test_fun_default![higher_order_opt, "(function(x) function(y) x + y)(1)"];
     test_fun_default![dotrow, "function(dim) .Internal(row(dim))"];
-    /*
     test_fun_default![
         print_asis,
-        "
-    function (x, ...) {
-        cl <- oldClass(x)
-        oldClass(x) <- cl[cl != \"AsIs\"]
-        NextMethod(\"print\")
-        invisible(x)
-    }"
-    ];*/
+        "function (x, ...) {
+            cl <- oldClass(x)
+            oldClass(x) <- cl[cl != \"AsIs\"]
+            NextMethod(\"print\")
+            invisible(x)
+        }"
+    ];
     test_fun_default![
         two_calls,
         "
@@ -2641,6 +2639,11 @@ mod tests {
         nextmethod,
         "function (generic = NULL, object = NULL, ...)
         .Internal(NextMethod(generic, object, ...))"
+    ];
+    test_fun_default![
+        range_posixct,
+        "function (..., na.rm = FALSE, finite = FALSE)
+        .rangeNum(..., na.rm = na.rm, finite = finite, isNumeric = function(.) TRUE)"
     ];
 
     test_fun_noopt![

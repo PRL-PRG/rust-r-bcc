@@ -117,6 +117,10 @@ impl<'a> CodeBuffer<'a> {
         }
     }
 
+    pub fn get_current_expr(&self) -> Option<ConstPoolItem<'a>> {
+        self.current_expr
+    }
+
     pub fn set_current_expr(&mut self, sexp: ConstPoolItem<'a>) -> Option<ConstPoolItem<'a>> {
         std::mem::replace(&mut self.current_expr, Some(sexp))
     }
