@@ -17,6 +17,8 @@ use super::{
 #[derive(Debug)]
 pub enum Warning {
     VariableDoesNotExist(String),
+    NoCasesInSwitch,
+    MultipleSwitchDefaults,
     NoLoopContext,
 }
 
@@ -1288,6 +1290,12 @@ impl<'a> Compiler<'a> {
                 }
                 true
             }
+            "switch" => {
+                if expr.args.len() < 1 || self.any_dots(expr) {
+                    return self.cmp_special(expr);
+                }
+                self.cmp_switch(expr)
+            }
             "==" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EQ_OP);
                 true
@@ -2047,9 +2055,135 @@ impl<'a> Compiler<'a> {
         matches!(name, "(" | "{" | "if") && self.is_base_var(name)
     }
 
+    fn cmp_switch(&mut self, switch: &'a lang::Lang<'a>) -> bool {
+        return self.cmp_special(switch);
+        let expr = switch.args[0].data;
+        let cases = &switch.args[1..];
+        if cases.len() == 0 {
+            self.warnings.push(Warning::NoCasesInSwitch)
+        }
+
+        let miss = self.missing_args(cases);
+        let mut names = self.names(cases);
+        if names.len() == 0 && cases.len() == 1 {
+            names.push(self.arena.empty_string);
+        }
+
+        let mut have_names = false;
+        let mut have_char_default = false;
+        // could happen if cases len in not 1
+        if names.len() == 0 {
+            have_names = true;
+            let n_default = names.iter().filter(|x| **x == "").count();
+            if n_default > 1 {
+                self.warnings.push(Warning::MultipleSwitchDefaults);
+                return self.cmp_special(switch);
+            }
+            if n_default > 0 {
+                have_char_default = true;
+            }
+        }
+        let miss_label = if miss.iter().any(|x| *x) {
+            Some(self.code_buffer.make_label())
+        } else {
+            None
+        };
+
+        let mut lab = |missing| {
+            if missing {
+                miss_label.unwrap()
+            } else {
+                self.code_buffer.make_label()
+            }
+        };
+        let labels: Vec<_> = miss.iter().map(|x| lab(*x)).collect();
+        let default_label = self.code_buffer.make_label();
+
+        let end_label = if !self.context.tailcall {
+            Some(self.code_buffer.make_label())
+        } else {
+            None
+        };
+
+        if have_names {
+            // get uniq without loosing order
+            // I must find better way
+            let mut unique_names: Vec<_> = names.iter().filter(|x| **x != "").cloned().collect();
+            for i in 0..unique_names.len() {
+                for j in ((i + 1)..unique_names.len()).rev() {
+                    if unique_names[i] == unique_names[j] {
+                        unique_names.remove(j);
+                    }
+                }
+            }
+
+            let miss_indexes: Vec<usize> =
+                miss.iter().zip(0..).filter(|x| *x.0).map(|x| x.1).collect();
+
+            let mut nlabels: Vec<usize> = unique_names
+                .iter()
+                .map(|name| labels[Self::find_action_index(name, &unique_names, &miss_indexes)])
+                .collect();
+
+            if have_char_default {
+                unique_names.push("");
+                nlabels.push(default_label);
+            }
+
+            let tailcall = self.context.tailcall;
+            self.context.tailcall = false;
+            self.cmp(expr, false, true);
+            self.context.tailcall = tailcall;
+
+            let expr_index = self.code_buffer.add_const_lang(switch.into());
+            let names_sexp = self.arena.alloc_slice_clone(names.as_slice());
+            let names_sexp = data::RVec::new(names_sexp);
+            let names_sexp = SexpKind::Str(names_sexp);
+            let names_sexp: &'a Sexp<'a> = self.arena.alloc(names_sexp.into());
+            let names_index = self.code_buffer.add_const_sexp(names_sexp);
+            self.code_buffer.add_instr_n(BcOp::SWITCH_OP, &[expr_index, names_index])
+        }
+        todo!()
+    }
+
+    fn find_action_index(name: &'a str, names: &Vec<&'a str>, miss_indexes: &Vec<usize>) -> usize {
+        let start = names.iter().position(|x| *x == name).unwrap();
+        let mut aidxs: Vec<usize> = miss_indexes
+            .iter()
+            .filter(|x| **x > start)
+            .cloned()
+            .collect();
+        if names.len() > start {
+            aidxs.push(names.len())
+        }
+        aidxs.iter().min().unwrap().clone()
+    }
+
     fn missing(&self, _sexp: &'a Sexp<'a>) -> bool {
         // TODO
         false
+    }
+
+    fn missing_args(&self, list: &[data::TaggedSexp<'a>]) -> Vec<bool> {
+        let mut res = vec![];
+        for item in list {
+            match item.data.kind {
+                SexpKind::MissingArg => res.push(true),
+                _ => res.push(false),
+            }
+        }
+        res
+    }
+
+    fn names(&self, list: &[data::TaggedSexp<'a>]) -> Vec<&'a str> {
+        let mut res = vec![];
+        for item in list {
+            match item.tag {
+                Some(tag) => res.push(tag.data),
+                None => res.push(self.arena.empty_string),
+            }
+        }
+        res
     }
 
     fn find_any_var(&self, name: &'a str) -> Option<&'a Sexp<'a>> {
@@ -2475,7 +2609,7 @@ mod tests {
             list(x);
         }"
     ];
-    //test_fun_noopt![higher_order, "(function(x) function(y) x + y)(1)"];
+    test_fun_noopt![higher_order, "(function(x) function(y) x + y)(1)"];
     test_fun_noopt![
         tmp_noopt,
         "
@@ -2644,6 +2778,11 @@ mod tests {
         range_posixct,
         "function (..., na.rm = FALSE, finite = FALSE)
         .rangeNum(..., na.rm = na.rm, finite = finite, isNumeric = function(.) TRUE)"
+    ];
+    test_fun_default![
+        storage_mode,
+        "function (x)
+        switch(tx <- typeof(x), closure = , builtin = , special = \"function\", tx)"
     ];
 
     test_fun_noopt![
