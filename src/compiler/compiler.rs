@@ -2068,6 +2068,7 @@ impl<'a> Compiler<'a> {
         }
 
         let miss = self.missing_args(cases);
+        println!("{miss:?}");
         let mut names = self.names(cases);
         if names.len() == 0 && cases.len() == 1 {
             names.push(self.arena.empty_string);
@@ -2122,14 +2123,24 @@ impl<'a> Compiler<'a> {
                 }
             }
 
+            if have_char_default {
+                unique_names.push(self.arena.empty_string);
+            }
+
+            println!("{unique_names:?}");
+
             let miss_indexes: Vec<usize> =
                 miss.iter().zip(0..).filter(|x| *x.0).map(|x| x.1).collect();
             let mut nlabels: Vec<usize> = unique_names
                 .iter()
-                .map(|name| labels[Self::find_action_index(name, &unique_names, &miss_indexes)])
+                .map(|name| {
+                    let index = Self::find_action_index(name, &unique_names, &miss_indexes);
+                    println!("index : {index}");
+                    labels[index]
+                })
                 .collect();
 
-            if have_char_default {
+            if ! have_char_default {
                 unique_names.push("");
                 nlabels.push(default_label);
             }
@@ -2204,7 +2215,7 @@ impl<'a> Compiler<'a> {
         let start = names.iter().position(|x| *x == name).unwrap();
         let mut aidxs: Vec<usize> = miss_indexes
             .iter()
-            .filter(|x| **x > start)
+            .filter(|x| **x >= start)
             .cloned()
             .collect();
         if names.len() > start {
