@@ -21,6 +21,8 @@ pub struct Alloc<'a> {
     pub value_sym: &'a lang::Sym<'a>,
 
     pub empty_metadata: &'a MetaData<'a>,
+
+
 }
 
 impl<'a> Alloc<'a> {
@@ -70,6 +72,8 @@ impl<'a> Alloc<'a> {
     pub fn get_empty(&self) -> &'a lang::Environment<'a> {
         Self::get_inner_env(self.empty_env)
     }
+
+
 }
 
 impl<'a> Deref for Alloc<'a> {

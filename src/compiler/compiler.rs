@@ -3,10 +3,13 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use crate::sexp::{
-    bc::{Bc, BcOp, ConstPoolItem},
-    sexp::{data, lang, MetaData, Sexp, SexpKind},
-    sexp_alloc::Alloc,
+use crate::{
+    compiler::code_buf::DEFLISTLABEL,
+    sexp::{
+        bc::{Bc, BcOp, ConstPoolItem},
+        sexp::{data, lang, MetaData, Sexp, SexpKind},
+        sexp_alloc::Alloc,
+    },
 };
 
 use super::{
@@ -175,6 +178,7 @@ impl<'a> Compiler<'a> {
         let orig = std::mem::replace(&mut self.code_buffer, tmp);
         self.code_buffer.add_const(target.into());
         self.cmp(&target, false, false);
+        self.code_buffer.patch_labels(self.arena);
         let locs = self.create_expression_loc();
         self.code_buffer.add_const(locs.into());
         let tmp = self.code_buffer.create_bc(self.arena);
@@ -2056,7 +2060,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn cmp_switch(&mut self, switch: &'a lang::Lang<'a>) -> bool {
-        return self.cmp_special(switch);
+        //return self.cmp_special(switch);
         let expr = switch.args[0].data;
         let cases = &switch.args[1..];
         if cases.len() == 0 {
@@ -2072,7 +2076,7 @@ impl<'a> Compiler<'a> {
         let mut have_names = false;
         let mut have_char_default = false;
         // could happen if cases len in not 1
-        if names.len() == 0 {
+        if names.len() != 0 {
             have_names = true;
             let n_default = names.iter().filter(|x| **x == "").count();
             if n_default > 1 {
@@ -2096,8 +2100,9 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.make_label()
             }
         };
-        let labels: Vec<_> = miss.iter().map(|x| lab(*x)).collect();
+        let mut labels: Vec<_> = miss.iter().map(|x| lab(*x)).collect();
         let default_label = self.code_buffer.make_label();
+        labels.push(default_label);
 
         let end_label = if !self.context.tailcall {
             Some(self.code_buffer.make_label())
@@ -2119,7 +2124,6 @@ impl<'a> Compiler<'a> {
 
             let miss_indexes: Vec<usize> =
                 miss.iter().zip(0..).filter(|x| *x.0).map(|x| x.1).collect();
-
             let mut nlabels: Vec<usize> = unique_names
                 .iter()
                 .map(|name| labels[Self::find_action_index(name, &unique_names, &miss_indexes)])
@@ -2141,9 +2145,59 @@ impl<'a> Compiler<'a> {
             let names_sexp = SexpKind::Str(names_sexp);
             let names_sexp: &'a Sexp<'a> = self.arena.alloc(names_sexp.into());
             let names_index = self.code_buffer.add_const_sexp(names_sexp);
-            self.code_buffer.add_instr_n(BcOp::SWITCH_OP, &[expr_index, names_index])
+            self.code_buffer.add_instr_n(
+                BcOp::SWITCH_OP,
+                &[expr_index, names_index, DEFLISTLABEL, DEFLISTLABEL],
+            );
+            self.code_buffer.add_list_label(nlabels, 1);
+            self.code_buffer.add_list_label(labels.clone(), 0);
+        } else {
+            let tailcall = self.context.tailcall;
+            self.context.tailcall = false;
+            self.cmp(expr, false, true);
+            self.context.tailcall = tailcall;
+
+            let expr_index = self.code_buffer.add_const_lang(switch.into());
+            let names_index = self.code_buffer.add_const_sexp(self.arena.nil.into());
+            self.code_buffer.add_instr_n(
+                BcOp::SWITCH_OP,
+                &[expr_index, names_index, names_index, DEFLISTLABEL],
+            );
+            self.code_buffer.add_list_label(labels.clone(), 0);
         }
-        todo!()
+
+        if miss.iter().any(|x| *x) {
+            self.code_buffer.put_label(miss_label.unwrap());
+            let stop_sexp = self.code_buffer.get_stop_switch(self.arena);
+            self.cmp_call(stop_sexp, true);
+        }
+
+        self.code_buffer.put_label(default_label);
+        self.code_buffer.add_instr(BcOp::LDNULL_OP);
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        } else {
+            self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+            self.code_buffer.set_label(end_label.unwrap());
+        }
+
+        for (idx, case) in cases.iter().enumerate() {
+            if !miss[idx] {
+                self.code_buffer.put_label(labels[idx]);
+                self.cmp(&case.data, false, true);
+
+                if !self.context.tailcall {
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+                    self.code_buffer.set_label(end_label.unwrap());
+                }
+            }
+        }
+
+        if !self.context.tailcall {
+            self.code_buffer.put_label(end_label.unwrap());
+        }
+        true
     }
 
     fn find_action_index(name: &'a str, names: &Vec<&'a str>, miss_indexes: &Vec<usize>) -> usize {
