@@ -1,15 +1,16 @@
 use crate::sexp::{
     bc::{Bc, BcOp, ConstPoolItem},
-    sexp::{lang, Sexp},
+    sexp::{data, lang, Sexp, SexpKind},
     sexp_alloc::Alloc,
 };
 
 /// i32 min represents NA in intepreter
 const NA: i32 = i32::MIN;
 
-// placeholder label which is inserted before patching
-// I choose this value since I wanted to be easily visible
+// placeholder label and list label which is inserted before patching
+// I choose these values since I wanted to be easily visible
 pub const DEFLABEL: i32 = 0xeeeeeee;
+pub const DEFLISTLABEL: i32 = 0xaaaaaaa;
 
 pub type LabelIdx = usize;
 
@@ -17,6 +18,12 @@ pub type LabelIdx = usize;
 struct Label {
     value: i32,
     positions: Vec<usize>,
+}
+
+#[derive(Default)]
+struct ListLabel {
+    position: usize,
+    data: Vec<LabelIdx>,
 }
 
 // code buffer is mutable Bc
@@ -27,6 +34,12 @@ pub struct CodeBuffer<'a> {
     pub current_expr: Option<ConstPoolItem<'a>>,
     pub expression_buffer: Vec<i32>,
     labels: Vec<Label>,
+    list_label: Vec<ListLabel>,
+
+    // this is needed for switch with some
+    // names missing. I will create it
+    // lazily
+    stop_switch: Option<&'a lang::Lang<'a>>,
 }
 
 impl<'a> CodeBuffer<'a> {
@@ -37,6 +50,8 @@ impl<'a> CodeBuffer<'a> {
             current_expr: None,
             expression_buffer: vec![NA], // first instruction is version and does not have a source
             labels: vec![],
+            list_label: vec![],
+            stop_switch: None,
         }
     }
 
@@ -47,6 +62,8 @@ impl<'a> CodeBuffer<'a> {
             current_expr: Some(curr_expr),
             expression_buffer: vec![NA], // first instruction is version and does not have a source
             labels: vec![],
+            list_label: vec![],
+            stop_switch: None,
         }
     }
 
@@ -144,22 +161,69 @@ impl<'a> CodeBuffer<'a> {
         self.labels[label as usize].value = self.instructions.len() as i32;
     }
 
-    fn patch_labels(&mut self) {
+    /// offset is into the intruction from back
+    pub fn add_list_label(&mut self, data: Vec<LabelIdx>, offset: i32) {
+        let position = self.instructions.len() as i32 - 1 - offset;
+        assert!(position > 0);
+        let position = position as usize;
+        self.list_label.push(ListLabel { data, position })
+    }
+
+    pub fn patch_labels(&mut self, arena: &'a Alloc<'a>) {
         for label in &self.labels {
             for pos in &label.positions {
                 self.instructions[*pos] = label.value;
             }
         }
+
+        for idx_label in 0..self.list_label.len() {
+            let label = &self.list_label[idx_label];
+            let offsets: Vec<i32> = label
+                .data
+                .iter()
+                .map(|idx| self.labels[*idx].value)
+                .collect();
+            let position = label.position;
+
+            let offsets = arena.alloc_slice_clone(offsets.as_slice());
+            let offsets = data::RVec::new(offsets);
+            let offsets = SexpKind::Int(offsets);
+            let offsets: &'a Sexp<'a> = arena.alloc(offsets.into());
+            let index = self.add_const_sexp(offsets);
+            self.instructions[position] = index;
+        }
     }
 
     pub fn create_bc(&mut self, arena: &'a Alloc<'a>) -> Bc<'a> {
-        self.patch_labels();
-
         //assert!(self.check_uniqueness_const());
 
         Bc::new(
             arena.alloc_slice_copy(self.instructions.as_slice()),
             arena.alloc_slice_copy(self.constpool.as_slice()),
         )
+    }
+
+    pub fn get_stop_switch(&mut self, arena: &'a Alloc<'a>) -> &'a lang::Lang<'a> {
+        if let Some(val) = &self.stop_switch {
+            return *val;
+        }
+
+        let target = arena.alloc_str("stop");
+        let target = lang::Sym::new(target);
+        let target = lang::Target::Sym(target);
+
+        let arg: &'a str = arena.alloc_str("empty alternative in numeric switch");
+        let arg = arena.alloc_slice_clone(&[arg]);
+        let arg = SexpKind::Str(data::RVec::new(arg));
+        let arg: &'a Sexp<'a> = arena.alloc(arg.into());
+        let arg = data::TaggedSexp::new(arg);
+        let args = arena.alloc_slice_clone(&[arg]);
+        let args = data::List { data: args };
+
+        let call = lang::Lang::new(target, args);
+        let call = arena.alloc(call);
+
+        self.stop_switch = Some(call);
+        self.stop_switch.unwrap()
     }
 }

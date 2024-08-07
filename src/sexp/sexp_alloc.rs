@@ -14,12 +14,15 @@ pub struct Alloc<'a> {
     pub global_env: &'a Sexp<'a>,
     pub empty_env: &'a Sexp<'a>,
     pub na_string: &'a str,
+    pub empty_string: &'a str,
     pub unbound: &'a Sexp<'a>,
     pub tmp_var: &'a Sexp<'a>,
     pub vtmp_var: &'a Sexp<'a>,
     pub value_sym: &'a lang::Sym<'a>,
 
     pub empty_metadata: &'a MetaData<'a>,
+
+
 }
 
 impl<'a> Alloc<'a> {
@@ -37,6 +40,7 @@ impl<'a> Alloc<'a> {
             global_env: allocator.alloc(SexpKind::Environment(lang::Environment::Global).into()),
             empty_env: allocator.alloc(SexpKind::Environment(lang::Environment::Empty).into()),
             na_string: allocator.alloc_str("__NA__"),
+            empty_string: allocator.alloc_str(""),
             unbound: allocator.alloc(SexpKind::UnboundVal.into()),
             tmp_var: allocator
                 .alloc(SexpKind::Sym(lang::Sym::new(allocator.alloc_str("*tmp*"))).into()),
@@ -68,6 +72,8 @@ impl<'a> Alloc<'a> {
     pub fn get_empty(&self) -> &'a lang::Environment<'a> {
         Self::get_inner_env(self.empty_env)
     }
+
+
 }
 
 impl<'a> Deref for Alloc<'a> {
