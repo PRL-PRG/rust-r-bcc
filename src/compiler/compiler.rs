@@ -2068,7 +2068,6 @@ impl<'a> Compiler<'a> {
         }
 
         let miss = self.missing_args(cases);
-        println!("{miss:?}");
         let mut names = self.names(cases);
         if names.len() == 0 && cases.len() == 1 {
             names.push(self.arena.empty_string);
@@ -2127,20 +2126,21 @@ impl<'a> Compiler<'a> {
                 unique_names.push(self.arena.empty_string);
             }
 
-            println!("{unique_names:?}");
-
-            let miss_indexes: Vec<usize> =
-                miss.iter().zip(0..).filter(|x| *x.0).map(|x| x.1).collect();
+            let miss_indexes: Vec<usize> = miss
+                .iter()
+                .zip(0..)
+                .filter(|x| !*x.0)
+                .map(|x| x.1)
+                .collect();
             let mut nlabels: Vec<usize> = unique_names
                 .iter()
                 .map(|name| {
-                    let index = Self::find_action_index(name, &unique_names, &miss_indexes);
-                    println!("index : {index}");
+                    let index = Self::find_action_index(name, &names, &miss_indexes);
                     labels[index]
                 })
                 .collect();
 
-            if ! have_char_default {
+            if !have_char_default {
                 unique_names.push("");
                 nlabels.push(default_label);
             }
@@ -2891,4 +2891,30 @@ mod tests {
         }
         "
     ];
+
+    //test_fun_default![
+    //rbind,
+    //"function (..., deparse.level = 1)
+    //.Internal(rbind(deparse.level, ...))"
+    //];
+
+    #[test]
+    fn test_find_action_index() {
+        let miss = vec![true, true, false, false];
+        let names = vec!["a", "b", "c", ""];
+        let unique_names = vec!["a", "b", "c"];
+        let miss_indexes: Vec<usize> = miss
+            .iter()
+            .zip(0..)
+            .filter(|x| !*x.0)
+            .map(|x| x.1)
+            .collect();
+        println!("{miss_indexes:?}");
+        let res: Vec<usize> = unique_names
+            .iter()
+            .map(|name| Compiler::find_action_index(name, &names, &miss_indexes))
+            .collect();
+
+        assert_eq!(res, vec![2, 2, 2]);
+    }
 }
