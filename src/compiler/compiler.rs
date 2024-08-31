@@ -89,7 +89,7 @@ const SAFE_BASE_INTERNALS: [&str; 20] = [
 // query only internals which have their internal set to builtin
 // so these are the values from names.c that I found fall into the
 // internal but are not builtin according to is.builtin.internal (10 in eval)
-const NON_BUILTIN_INTERNAL: [&str; 4] = ["eapply", "lapply", "vapply", "NextMethod"];
+const NON_BUILTIN_INTERNAL: [&str; 5] = ["eapply", "lapply", "vapply", "NextMethod", "rbind"];
 
 impl<'a> Compiler<'a> {
     pub fn new(arena: &'a Alloc<'a>) -> Self {
@@ -777,8 +777,98 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.add_instr(BcOp::SWAP_OP);
                 true
             }
+            "[[" => {
+                if self.dots_or_missing(&expr.args)
+                    || !self.names(&expr.args).is_empty()
+                    || expr.args.len() < 2
+                {
+                    return self.cmp_getter_dispatch(
+                        BcOp::STARTSUBSET2_OP,
+                        BcOp::DFLTSUBSET2_OP,
+                        expr,
+                    );
+                }
+                let nidx = expr.args.len() - 1;
+                let (code, rank) = match nidx {
+                    1 => (BcOp::VECSUBSET2_OP, false),
+                    2 => (BcOp::MATSUBSET2_OP, false),
+                    _ => (BcOp::SUBSET2_N_OP, true),
+                };
+                self.cmp_subset_getter_dispatch(BcOp::STARTSUBSET2_N_OP, code, rank, expr)
+            }
+            "[" => {
+                if self.dots_or_missing(&expr.args)
+                    || !self.names(&expr.args).is_empty()
+                    || expr.args.len() < 2
+                {
+                    return self.cmp_getter_dispatch(
+                        BcOp::STARTSUBSET_OP,
+                        BcOp::DFLTSUBSET_OP,
+                        expr,
+                    );
+                }
+                let nidx = expr.args.len() - 1;
+                let (code, rank) = match nidx {
+                    1 => (BcOp::VECSUBSET_OP, false),
+                    2 => (BcOp::MATSUBSET_OP, false),
+                    _ => (BcOp::SUBSET_N_OP, true),
+                };
+                self.cmp_subset_getter_dispatch(BcOp::STARTSUBSET_N_OP, code, rank, expr)
+            }
             _ => false,
         }
+    }
+
+    fn cmp_getter_dispatch(&mut self, start: BcOp, end: BcOp, call: &'a lang::Lang<'a>) -> bool {
+        if self.any_dots(call) {
+            return false;
+        }
+        let call_index = self.code_buffer.add_const_lang(call.into());
+        let end_label = self.code_buffer.make_label();
+        self.code_buffer.add_instr(BcOp::DUP2ND_OP);
+        self.code_buffer.add_instr_n(start, &[call_index, DEFLABEL]);
+        self.code_buffer.set_label(end_label);
+        if call.args.len() > 1 {
+            self.cmp_builtin_args(&call.args[1..], true);
+        }
+        self.code_buffer.add_instr(end);
+        self.code_buffer.put_label(end_label);
+        self.code_buffer.add_instr(BcOp::SWAP_OP);
+        true
+    }
+
+    fn cmp_subset_getter_dispatch(
+        &mut self,
+        start: BcOp,
+        end: BcOp,
+        rank: bool,
+        call: &'a lang::Lang<'a>,
+    ) -> bool {
+        if self.dots_or_missing(&call.args)
+            || !self.names(&call.args).is_empty()
+            || call.args.len() < 2
+        {
+            panic!()
+        }
+
+        let call_index = self.code_buffer.add_const_lang(call);
+        let label = self.code_buffer.make_label();
+        self.code_buffer.add_instr(BcOp::DUP2ND_OP);
+        self.code_buffer.add_instr_n(start, &[call_index, DEFLABEL]);
+        self.code_buffer.set_label(label);
+
+        self.cmp_indicies(&call.args[1..]);
+
+        if rank {
+            self.code_buffer
+                .add_instr_n(end, &[call_index, (call.args.len() - 1) as i32])
+        } else {
+            self.code_buffer.add_instr2(end, call_index);
+        }
+        self.code_buffer.put_label(label);
+        self.code_buffer.add_instr(BcOp::SWAP_OP);
+
+        true
     }
 
     fn append_tagged_expr(
@@ -909,6 +999,31 @@ impl<'a> Compiler<'a> {
                     )
                 }
             }
+            "[[<-" => {
+                if self.dots_or_missing(&place.args) || place.args.len() < 2 {
+                    self.cmp_setter_dispatch(
+                        BcOp::STARTSUBASSIGN2_OP,
+                        BcOp::DFLTSUBASSIGN2_OP,
+                        place,
+                        call,
+                    )
+                } else {
+                    let nidx = place.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBASSIGN2_OP, false),
+                        2 => (BcOp::MATSUBASSIGN2_OP, false),
+                        _ => (BcOp::SUBASSIGN2_N_OP, true),
+                    };
+                    self.cmp_subassign_dispatch(
+                        BcOp::STARTSUBASSIGN2_N_OP,
+                        code,
+                        rank,
+                        afun,
+                        place,
+                        call,
+                    )
+                }
+            }
             _ => false,
         }
     }
@@ -973,11 +1088,11 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn dots_or_missing(&self, args: &data::List) -> bool {
+    fn dots_or_missing(&self, args: &'a data::List<'a>) -> bool {
         for arg in args.into_iter() {
             match &arg.data.kind {
-                SexpKind::MissingArg => return true,
                 SexpKind::Sym(sym) if sym.data == "..." => return true,
+                _ if self.missing(&arg.data) => return true,
                 _ => (),
             }
         }
@@ -2224,9 +2339,25 @@ impl<'a> Compiler<'a> {
         aidxs.iter().min().unwrap().clone()
     }
 
-    fn missing(&self, _sexp: &'a Sexp<'a>) -> bool {
+    fn ddval(&self, sym: &'a lang::Sym<'a>) -> Option<i32> {
+        if sym.data.len() > 2 && sym.data.starts_with("..") {
+            match sym.data[2..].parse::<i32>() {
+                Ok(num) => Some(num),
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    fn missing(&self, sexp: &'a Sexp<'a>) -> bool {
         // TODO
-        false
+        match &sexp.kind {
+            SexpKind::MissingArg => true,
+            SexpKind::Sym(sym) if sym.data == "..." =>  true,
+            SexpKind::Sym(sym) if self.ddval(sym).is_some() => true,
+            _ => false,
+        }
     }
 
     fn missing_args(&self, list: &[data::TaggedSexp<'a>]) -> Vec<bool> {
@@ -2242,13 +2373,22 @@ impl<'a> Compiler<'a> {
 
     fn names(&self, list: &[data::TaggedSexp<'a>]) -> Vec<&'a str> {
         let mut res = vec![];
+        let mut any = false;
         for item in list {
             match item.tag {
-                Some(tag) => res.push(tag.data),
-                None => res.push(self.arena.empty_string),
+                Some(tag) if !tag.data.is_empty() => {
+                    any = true;
+                    res.push(tag.data)
+                }
+                _ => res.push(self.arena.empty_string),
             }
         }
-        res
+
+        if any {
+            res
+        } else {
+            vec![]
+        }
     }
 
     fn find_any_var(&self, name: &'a str) -> Option<&'a Sexp<'a>> {
@@ -2892,11 +3032,81 @@ mod tests {
         "
     ];
 
-    //test_fun_default![
-    //rbind,
-    //"function (..., deparse.level = 1)
-    //.Internal(rbind(deparse.level, ...))"
-    //];
+    test_fun_default![
+        rbind,
+        "function (..., deparse.level = 1)
+        .Internal(rbind(deparse.level, ...))"
+    ];
+
+    // This will need subset of interpret
+    /*
+    test_fun_default![
+        gc,
+        r#"function (verbose = getOption("verbose"), reset = FALSE, full = TRUE)
+        {
+            res <- .Internal(gc(verbose, reset, full))
+            res <- matrix(res, 2L, 7L, dimnames = list(c("Ncells", "Vcells"),
+                c("used", "(Mb)", "gc trigger", "(Mb)", "limit (Mb)",
+                    "max used", "(Mb)")))
+            if (all(is.na(res[, 5L])))
+                res[, -5L]
+            else res
+        }"#
+    ];*/
+
+    test_fun_default![
+        dot_merge_import_methods,
+        r#"
+        function (impenv, expenv, metaname)
+        {
+            impMethods <- impenv[[metaname]]
+            if (!is.null(impMethods))
+                impenv[[metaname]] <- methods:::.mergeMethodsTable2(impMethods,
+                    newtable = expenv[[metaname]], expenv, metaname)
+            impMethods
+        }"#
+    ];
+
+    test_fun_default![
+        format_data_frame,
+        r#"
+        function (x, ..., justify = "none")
+        {
+            nc <- length(x)
+            if (!nc)
+                return(x)
+            nr <- .row_names_info(x, 2L)
+            rval <- vector("list", nc)
+            for (i in seq_len(nc)) rval[[i]] <- format(x[[i]], ..., justify = justify)
+            lens <- vapply(rval, NROW, 1)
+            if (any(lens != nr)) {
+                warning("corrupt data frame: columns will be truncated or padded with NAs")
+                for (i in seq_len(nc)) {
+                    len <- NROW(rval[[i]])
+                    if (len == nr)
+                        next
+                    if (length(dim(rval[[i]])) == 2L) {
+                        rval[[i]] <- if (len < nr)
+                          rbind(rval[[i]], matrix(NA, nr - len, ncol(rval[[i]])))
+                        else rval[[i]][seq_len(nr), ]
+                    }
+                    else {
+                        rval[[i]] <- if (len < nr)
+                          c(rval[[i]], rep.int(NA, nr - len))
+                        else rval[[i]][seq_len(nr)]
+                    }
+                }
+            }
+            for (i in seq_len(nc)) {
+                if (is.character(rval[[i]]) && inherits(rval[[i]], "character"))
+                    oldClass(rval[[i]]) <- "AsIs"
+            }
+            y <- as.data.frame.list(rval, row.names = seq_len(nr), col.names = names(x),
+                optional = TRUE, fix.empty.names = FALSE, cut.names = TRUE)
+            attr(y, "row.names") <- row.names(x)
+            y
+        }"#
+    ];
 
     #[test]
     fn test_find_action_index() {
