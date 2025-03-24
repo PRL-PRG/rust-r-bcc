@@ -11,4 +11,4 @@ orig <- sapply(basevars[types == "closure"], \(x) {
 start_time = Sys.time();
 x <- sapply(orig, \(x) tryCatch(compiler::cmpfun(x), error=function(e) NULL));
 end_time = Sys.time();
-end_time - start_time
+cat(as.double(end_time - start_time, units = "secs"))
