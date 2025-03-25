@@ -263,7 +263,7 @@ fn bench() {
 
     eprintln!("{correct} / {all} ({count})");
     println!(
-        "{}s {}ms {}s {}ms",
+        "{} {} {} {}",
         full_start.elapsed().as_secs_f32(),
         full_start.elapsed().as_millis(),
         comp_start.elapsed().as_secs_f64(),
