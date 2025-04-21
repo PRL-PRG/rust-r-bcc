@@ -6,6 +6,7 @@ use self::rds_reader::RDSReader;
 use self::rds_writer::RDSWriter;
 use bumpalo::Bump;
 use crate::sexp::sexp_alloc::Alloc;
+use crate::misc::commands::create_serdata;
 
 use super::*;
 
@@ -354,9 +355,7 @@ macro_rules! testR {
             fn reader() {
                 let path = format!("temp/{}.dat", stringify!($name));
                 let path = path.as_str();
-                let mut command = std::process::Command::new("./scripts/create_serdata.R")
-                    .args(["-d", $code, path]).spawn().unwrap();
-                assert!(command.wait().unwrap().success());
+                create_serdata($code, path);
 
                 let file = std::fs::File::open(path).unwrap();
 
@@ -373,9 +372,7 @@ macro_rules! testR {
             fn writer() {
                 let path = format!("temp/{}_writer.dat", stringify!($name));
                 let path = path.as_str();
-                let mut command = std::process::Command::new("./scripts/create_serdata.R")
-                    .args(["-d", $code, path]).spawn().unwrap();
-                assert!(command.wait().unwrap().success());
+                create_serdata($code, path);
             
                 let file = std::fs::File::open(path).unwrap();
 

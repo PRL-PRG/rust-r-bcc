@@ -13,13 +13,16 @@ use crate::{
     server::run,
     sexp::sexp::{lang, Sexp, SexpKind},
 };
+use crate::misc::commands::{compile_base_package};
 
 mod compiler;
 mod rds;
 mod server;
 mod sexp;
+mod misc;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum MainError {
     RDSRead(RDSReaderError),
     RDSWrite(RDSWriterError),
@@ -52,11 +55,7 @@ fn noopt_bench() {
     let path_env = "temp/benchenv_noopt.RDS";
 
     // base environment
-    let mut command = std::process::Command::new("./scripts/compile_base_package.R")
-        .args([path_env])
-        .spawn()
-        .unwrap();
-    assert!(command.wait().unwrap().success());
+    compile_base_package(path_env);
 
     let arena = Bump::new();
     let arena = Alloc::new(&arena);
@@ -140,11 +139,7 @@ fn bench() {
     let path_env = "temp/benchenv.RDS";
 
     // base environment
-    let mut command = std::process::Command::new("./scripts/compile_base_package.R")
-        .args([path_env])
-        .spawn()
-        .unwrap();
-    assert!(command.wait().unwrap().success());
+    compile_base_package(path_env);
 
     let arena = Bump::new();
     let arena = Alloc::new(&arena);

@@ -17,6 +17,7 @@ use super::RDSResult;
 use super::RefsTableReader;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum RDSReaderError {
     DataError(String),
     //WrongFlag(i32),

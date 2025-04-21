@@ -18,6 +18,7 @@ use super::{
 };
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Warning {
     VariableDoesNotExist(String),
     NoCasesInSwitch,
@@ -951,7 +952,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         afun: lang::Sym<'a>,
         place: &'a lang::Lang<'a>,
-        orig_place: &'a lang::Lang<'a>,
+        _orig_place: &'a lang::Lang<'a>,
         call: &'a lang::Lang<'a>,
     ) -> bool {
         let info = self.get_inlineinfo(afun.data);
@@ -1057,7 +1058,7 @@ impl<'a> Compiler<'a> {
         start_op: BcOp,
         code: BcOp,
         rank: bool,
-        afun: lang::Sym<'a>,
+        _afun: lang::Sym<'a>,
         place: &'a lang::Lang<'a>,
         call: &'a lang::Lang<'a>,
     ) -> bool {
@@ -2540,7 +2541,7 @@ mod tests {
     use std::cell::UnsafeCell;
     use std::io::{BufWriter, Read, Write};
     use std::sync::Once;
-
+    use crate::misc::commands::{create_testdata, write_baseenv};
     use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
 
     macro_rules! test_fun_noopt {
@@ -2558,11 +2559,7 @@ mod tests {
                     let path_comp = path_comp.as_str();
 
                     // input and output data serialized
-                    let mut command = std::process::Command::new("./scripts/create_testdata.R")
-                        .args([$code, path, path_comp, "-noopt"])
-                        .spawn()
-                        .unwrap();
-                    assert!(command.wait().unwrap().success());
+                    create_testdata($code, path, path_comp, false);
 
                     let file = std::fs::File::open(path).unwrap();
                     let file = RDSReader::new(UnsafeCell::new(file), &arena);
@@ -2618,11 +2615,7 @@ mod tests {
                 std::fs::remove_file(path_env).unwrap()
             }
             // base environment
-            let mut command = std::process::Command::new("./scripts/baseenv.R")
-                .args([path_env])
-                .spawn()
-                .unwrap();
-            assert!(command.wait().unwrap().success());
+            write_baseenv(path_env);
             unsafe { DONE_CHECK = true }
         })
     }
@@ -2643,11 +2636,7 @@ mod tests {
                     let path_env = "temp/test_compiler_env.dat";
 
                     // input and output data serialized
-                    let mut command = std::process::Command::new("./scripts/create_testdata.R")
-                        .args([$code, path, path_comp, "-opt"])
-                        .spawn()
-                        .unwrap();
-                    assert!(command.wait().unwrap().success());
+                    create_testdata($code, path, path_comp, true);
 
                     if unsafe { !DONE_CHECK } {
                         setup();

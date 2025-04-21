@@ -15,7 +15,7 @@ pub struct CompilerContext<'a> {
     pub need_returnjmp: bool,
     pub tailcall: bool,
     pub loop_ctx: Option<LoopContext>,
-    pub call: Option<&'a lang::Lang<'a>>,
+    pub _call: Option<&'a lang::Lang<'a>>,
 }
 
 #[allow(dead_code)]
@@ -24,7 +24,7 @@ impl<'a> CompilerContext<'a> {
         Self {
             top_level: true,
             tailcall: true,
-            call: None,
+            _call: None,
             ..ctxt.clone()
         }
     }
@@ -39,7 +39,7 @@ impl<'a> CompilerContext<'a> {
 
     pub fn new_call(ctxt: &CompilerContext, call: &'a lang::Lang<'a>) -> Self {
         Self {
-            call: Some(call),
+            _call: Some(call),
             ..ctxt.clone()
         }
     }
@@ -59,7 +59,7 @@ impl<'a> CompilerContext<'a> {
         }
     }
 
-    pub fn new_function(ctxt : &CompilerContext<'a>, formals : &data::List<'a>, body : &Sexp<'a>) -> Self {
+    pub fn new_function(ctxt : &CompilerContext<'a>, _formals : &data::List<'a>, _body: &Sexp<'a>) -> Self {
         let tmp = CompilerContext::new_top(ctxt);
         tmp
     }

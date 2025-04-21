@@ -89,7 +89,7 @@ impl<'a> Sexp<'a> {
 }
 
 pub mod data {
-    use std::ops::{Deref, DerefMut};
+    use std::ops::Deref;
 
     use super::Sexp;
 
@@ -425,7 +425,7 @@ pub mod lang {
     }
 
     impl<'a> Environment<'a> {
-        pub fn find_local_var(&'a self, name: &str) -> Option<&super::Sexp> {
+        pub fn find_local_var(&'a self, name: &str) -> Option<&'a super::Sexp<'a>> {
             match self {
                 Environment::Global
                 | Environment::Base
@@ -459,7 +459,7 @@ pub mod lang {
             }
         }
 
-        pub fn find_local_var(&'a self, name: &str) -> Option<&super::Sexp> {
+        pub fn find_local_var(&'a self, name: &str) -> Option<&'a super::Sexp<'a>> {
             match self.frame.get(name) {
                 Some(res) => Some(res),
                 None => match self.hash_frame.get(name) {
@@ -508,7 +508,7 @@ pub mod lang {
             }
         }
 
-        pub fn get(&'a self, name: &str) -> Option<&super::Sexp> {
+        pub fn get(&'a self, name: &str) -> Option<&'a super::Sexp<'a>> {
             let index = self.env.get(name)?.clone();
             match &self.data {
                 Some(data) => Some(&data[index].data),
@@ -564,7 +564,7 @@ pub mod lang {
             }
         }
 
-        pub fn get(&'a self, name: &str) -> Option<&super::Sexp> {
+        pub fn get(&'a self, name: &str) -> Option<&'a super::Sexp<'a>> {
             let (block, idx) = self.env.get(name)?.clone();
 
             match &self.data {

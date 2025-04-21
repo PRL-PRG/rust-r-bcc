@@ -9,6 +9,7 @@ use crate::sexp::{
 use super::{sexptype, Flag, RDSHeader, RefsTableWriter};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum RDSWriterError {
     DataError(String),
     IO(std::io::Error),
