@@ -2,3 +2,4 @@
 *.profraw
 /mutants.out*
 /temp/*
+!/temp/.gitkeep
