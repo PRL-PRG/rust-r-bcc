@@ -5,14 +5,17 @@ pub fn compile_base_package(path_env: &str) {
     run_r_script("compile_base_package", &[path_env]);
 }
 
+#[cfg(test)]
 pub fn write_baseenv(path_env: &str) {
     run_r_script("baseenv", &[path_env])
 }
 
+#[cfg(test)]
 pub fn create_serdata(code: &str, path: &str) {
     run_r_script("create_serdata", &["-d", code, path])
 }
 
+#[cfg(test)]
 pub fn create_testdata(code: &str, path: &str, path_comp: &str, opt: bool) {
     // Create test data using R script
     let opt_flag = if opt { "-opt" } else { "-noopt" };

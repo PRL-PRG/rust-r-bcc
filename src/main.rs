@@ -51,92 +51,8 @@ impl From<RDSWriterError> for MainError {
 //impl<'a> RDSReader<'a> for File {}
 impl<'a> RDSWriter<'a> for File {}
 
-fn noopt_bench() {
-    let path_env = "temp/benchenv_noopt.RDS";
-
-    // base environment
-    compile_base_package(path_env);
-
-    let arena = Bump::new();
-    let arena = Alloc::new(&arena);
-    let full_start = Instant::now();
-
-    let file = std::fs::File::open(format!("{path_env}.orig")).unwrap();
-    let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    let RDSResult {
-        header: _,
-        data: orig,
-    } = file.read_rds().unwrap();
-
-    //let file = std::fs::File::open(format!("{path_env}.cmp_no_opt")).unwrap();
-    //let file = RDSReader::new(UnsafeCell::new(file), &arena);
-    //let RDSResult {
-    //header: _,
-    //data: cmp,
-    //} = file.read_rds().unwrap();
-
-    let SexpKind::Environment(lang::Environment::Normal(orig)) = orig.kind else {
-        println!("{orig}");
-        unreachable!()
-    };
-
-    //let SexpKind::Environment(lang::Environment::Normal(cmp)) = cmp.kind else {
-    //println!("{cmp}");
-    //unreachable!()
-    //};
-
-    assert!(orig.hash_frame.data.is_some());
-
-    let mut compiler = Compiler::new_options(0, &arena);
-
-    let comp_start = Instant::now();
-    for key in orig.hash_frame.env.keys() {
-        let closure = orig.hash_frame.get(&key).unwrap();
-        let closure = match &closure.kind {
-            SexpKind::Closure(closure) => closure,
-            SexpKind::Nil => continue,
-            _ => {
-                println!("{closure}");
-                panic!()
-            }
-        };
-        let res = compiler.cmpfun(closure);
-        std::hint::black_box(res);
-        /*let corr_closure = cmp.hash_frame.get(&key).unwrap();
-        let corr_closure = match &corr_closure.kind {
-            SexpKind::Closure(closure) => closure,
-            SexpKind::Nil => panic!(),
-            _ => {
-                println!("{closure}");
-                panic!()
-            }
-        };
-
-        count += 1;
-
-        if &res == corr_closure {
-            correct += 1;
-        } else {
-            fails += 1;
-            println!("fail {key}");
-            if *key == "qr.coef" {
-                println!("My:\n{res}\n");
-                println!("Correct:\n{corr_closure}\n");
-            }
-        }*/
-    }
-
-    println!(
-        "{}s {}ms {}s {}ms",
-        full_start.elapsed().as_secs_f32(),
-        full_start.elapsed().as_millis(),
-        comp_start.elapsed().as_secs_f64(),
-        comp_start.elapsed().as_millis()
-    );
-}
-
-fn bench() {
-    let path_env = "temp/benchenv.RDS";
+fn bench(opt: bool, log_errors: bool) {
+    let path_env = if opt { "temp/benchenv.RDS" } else { "temp/benchenv_noopt.RDS" };
 
     // base environment
     compile_base_package(path_env);
@@ -249,7 +165,7 @@ fn bench() {
             correct += 1;
         } else {
             eprintln!("fail {key}");
-            if *key == "NextMethod" {
+            if log_errors {
                 println!("My compilation:\n{res}\n");
                 println!("Correct compilation:\n{corr_closure}");
             }
@@ -273,11 +189,9 @@ fn main() -> Result<(), MainError> {
         return Ok(());
     }
     if args.len() == 2 && args[1] == "-b" {
-        bench();
-        return Ok(());
-    }
-    if args.len() == 2 && args[1] == "-nooptb" {
-        noopt_bench();
+        let opt = !env::var("NOOPT").is_ok_and(|v| v == "1" || v == "true");
+        let log_errors = env::var("LOG_ERRORS").is_ok_and(|v| v == "1" || v == "true");
+        bench(opt, log_errors);
         return Ok(());
     }
     if args.len() != 3 {
