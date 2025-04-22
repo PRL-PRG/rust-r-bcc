@@ -2,7 +2,6 @@ use std::{
     cell::UnsafeCell,
     collections::{HashMap, HashSet},
 };
-
 use crate::{
     compiler::code_buf::DEFLISTLABEL,
     sexp::{
@@ -11,11 +10,8 @@ use crate::{
         sexp_alloc::Alloc,
     },
 };
-
-use super::{
-    code_buf::{CodeBuffer, DEFLABEL},
-    compiler_context::CompilerContext,
-};
+use crate::compiler::constant_fold::ConstantFold;
+use super::{code_buf::{CodeBuffer, DEFLABEL}, compiler_context::CompilerContext};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -49,6 +45,10 @@ pub struct Compiler<'a> {
 
     arena: &'a Alloc<'a>,
 }
+
+const DEFAULT_OPTIMIZATION_LEVEL: usize = 2;
+
+const MAYBE_NSE_SYMBOLS: [&'static str; 1] = ["bquote"];
 
 const LANG_FUNCS: [&str; 46] = [
     "^", "~", "<", "<<-", "<=", "<-", "=", "==", ">", ">=", "|", "||", "-", ":", "!", "!=", "/",
@@ -91,6 +91,24 @@ const SAFE_BASE_INTERNALS: [&str; 20] = [
 // so these are the values from names.c that I found fall into the
 // internal but are not builtin according to is.builtin.internal (10 in eval)
 const NON_BUILTIN_INTERNAL: [&str; 5] = ["eapply", "lapply", "vapply", "NextMethod", "rbind"];
+
+const FORBIDDEN_INLINES: [&str; 1] = ["standardGeneric"];
+
+const DOTCALL_MAX: usize = 16;
+
+const MAX_CONST_SIZE: usize = 10;
+
+const ALLOWED_FOLDABLE_CONSTS: [&'static str; 3] = ["pi", "T", "F"];
+
+const ALLOWED_FOLDABLE_FUNS: [&'static str; 13] = ["c", "+", "*", "/", ":", "-", "^", "(", "log2", "log", "sqrt", "rep", "seq.int"];
+
+const LOOP_STOP_FUNS: [&'static str; 4] = ["function", "for", "while", "repeat"];
+
+const LOOP_TOP_FUNS: [&'static str; 3] = ["(", "{", "if"];
+
+const LOOP_BREAK_FUNS: [&'static str; 2] = ["break", "next"];
+
+const EVAL_FUNS: [&'static str; 3] = ["eval", "evalq", "source"];
 
 impl<'a> Compiler<'a> {
     pub fn new(arena: &'a Alloc<'a>) -> Self {
@@ -195,32 +213,13 @@ impl<'a> Compiler<'a> {
         } else {
             None
         };
-        match &sexp.kind {
-            SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
-            SexpKind::Nil => {
-                self.code_buffer.add_instr(BcOp::LDNULL_OP);
 
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-            }
-            SexpKind::Environment(_) => todo!(),
-            SexpKind::Promise {
-                environment: _,
-                expr: _,
-                value: _,
-            } => {
-                todo!()
-            }
-            SexpKind::Lang(lang) => self.cmp_call(lang, true),
-            _ => {
-                self.cmp_const(&sexp);
+        if let Some(r#const) = self.constant_fold(sexp) {
+            self.cmp_const(r#const);
+        }  else {
+            self.cmp_non_const(sexp, missing_ok);
+        }
 
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-            }
-        };
         self.code_buffer.restore_current_expr(orig);
     }
 
@@ -238,6 +237,19 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.add_instr2(BcOp::LDCONST_OP, ci);
             }
         }
+
+        if self.context.tailcall {
+            self.code_buffer.add_instr(BcOp::RETURN_OP);
+        }
+    }
+
+    fn cmp_non_const(&mut self, sexp: &'a Sexp<'a>, missing_ok: bool) {
+        match &sexp.kind {
+            SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
+            SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
+            SexpKind::Lang(lang) => self.cmp_call(lang, true),
+            _ => self.cmp_const(&sexp),
+        };
     }
 
     fn cmp_sym(&mut self, sym: &'a lang::Sym<'a>, missing_ok: bool) {
@@ -281,6 +293,11 @@ impl<'a> Compiler<'a> {
         }
 
         match &call.target {
+            lang::Target::Lang(lang::Lang { target: lang::Target::Sym(fun_name), .. })
+            if LOOP_BREAK_FUNS.contains(&fun_name.data) => {
+                let call_sexp = self.arena.alloc(Sexp::from(SexpKind::Lang(call.clone())));
+                self.cmp(call_sexp, false, true);
+            }
             lang::Target::Lang(lang) => {
                 let orig_tailcall = self.context.tailcall;
                 self.context.tailcall = false;
@@ -292,7 +309,7 @@ impl<'a> Compiler<'a> {
                 self.code_buffer.restore_current_expr(orig);
 
                 self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
-                self.cmp_args(&call.args);
+                self.cmp_args(&call.args, false);
                 let index = self.code_buffer.add_const_lang(call);
                 self.code_buffer.add_instr2(BcOp::CALL_OP, index);
 
@@ -320,7 +337,7 @@ impl<'a> Compiler<'a> {
     ) {
         let index = self.code_buffer.add_const(sym.into());
         self.code_buffer.add_instr2(BcOp::GETFUN_OP, index);
-        self.cmp_args(args);
+        self.cmp_args(args, MAYBE_NSE_SYMBOLS.contains(&sym.data));
         let index = self.code_buffer.add_const(orig.into());
         self.code_buffer.add_instr2(BcOp::CALL_OP, index);
         if self.context.tailcall {
@@ -328,7 +345,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn cmp_args(&mut self, args: &[data::TaggedSexp<'a>]) {
+    fn cmp_args(&mut self, args: &[data::TaggedSexp<'a>], nse: bool) {
         let tmp = CompilerContext::new_promise(&self.context);
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
@@ -348,12 +365,16 @@ impl<'a> Compiler<'a> {
                     value: _,
                 } => todo!(),
                 SexpKind::Sym(_) | SexpKind::Lang(_) => {
-                    let curr = self.code_buffer.current_expr.clone();
-                    let code = self
-                        .arena
-                        .alloc(SexpKind::Bc(self.gen_code(&arg.data, curr)).into())
-                        as &'a Sexp<'a>;
-                    let index = self.code_buffer.add_const(code.into());
+                    let index = if nse {
+                        self.code_buffer.add_const(ConstPoolItem::from(arg.data))
+                    } else {
+                        let curr = self.code_buffer.current_expr.clone();
+                        let code = self
+                            .arena
+                            .alloc(SexpKind::Bc(self.gen_code(&arg.data, curr)).into())
+                            as &'a Sexp<'a>;
+                        self.code_buffer.add_const(code.into())
+                    };
                     self.code_buffer.add_instr2(BcOp::MAKEPROM_OP, index);
                     self.cmp_tag(&arg.tag);
                 }
@@ -729,7 +750,7 @@ impl<'a> Compiler<'a> {
                     let sym_index = self.code_buffer.add_const_sym(sym.into());
                     self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                    self.cmp_args(&place.args);
+                    self.cmp_args(&place.args, false);
                     let index = self.code_buffer.add_const_lang(place.into());
                     self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
                     self.code_buffer.add_instr(BcOp::SWAP_OP);
@@ -739,7 +760,7 @@ impl<'a> Compiler<'a> {
                 self.cmp_call(lang, true);
                 self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
                 self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                self.cmp_args(&place.args);
+                self.cmp_args(&place.args, false);
                 let index = self.code_buffer.add_const_lang(place.into());
                 self.code_buffer.add_instr2(BcOp::GETTER_CALL_OP, index);
                 self.code_buffer.add_instr(BcOp::SWAP_OP);
@@ -922,7 +943,7 @@ impl<'a> Compiler<'a> {
                     let sym_index = self.code_buffer.add_const_sym(sym.into());
                     self.code_buffer.add_instr2(BcOp::GETFUN_OP, sym_index);
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                    self.cmp_args(&place.args[1..]);
+                    self.cmp_args(&place.args[1..], false);
                     let call_index = self.code_buffer.add_const_lang(acall.into());
                     let value_index = self.code_buffer.add_const_sexp(value_expr.into());
                     self.code_buffer
@@ -934,7 +955,7 @@ impl<'a> Compiler<'a> {
 
                 self.code_buffer.add_instr(BcOp::CHECKFUN_OP);
                 self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                self.cmp_args(&place.args[1..]);
+                self.cmp_args(&place.args[1..], false);
 
                 let call_index = self.code_buffer.add_const_lang(acall.into());
                 let value_index = self.code_buffer.add_const_sexp(value_expr.into());
@@ -1110,13 +1131,9 @@ impl<'a> Compiler<'a> {
             lang::Target::Sym(s) => s.data,
         };
 
-        let info = self.get_inlineinfo(sym);
-
-        if info.is_none() {
+        let Some(info) = self.get_inlineinfo(sym) else {
             return false;
-        }
-
-        let info = info.unwrap();
+        };
 
         if info.guard {
             let tailcall = self.context.tailcall;
@@ -1144,6 +1161,32 @@ impl<'a> Compiler<'a> {
 
     fn handle_inline(&mut self, sym: &'a str, expr: &'a lang::Lang<'a>, info: InlineInfo) -> bool {
         match sym {
+            "{" => {
+                if expr.args.is_empty() {
+                    self.cmp(self.arena.nil, false, true);
+                    return true;
+                }
+
+                let orig_loc = std::mem::replace(&mut self.code_buffer.current_expr, None);
+
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                for inner in &expr.args[0..(expr.args.len() - 1)] {
+                    self.code_buffer.set_current_expr(inner.data.into());
+                    self.cmp(&inner.data, false, false);
+                    self.code_buffer.set_current_expr(inner.data.into());
+                    self.code_buffer.add_instr(BcOp::POP_OP);
+                }
+                self.context.tailcall = tailcall;
+
+                self.code_buffer
+                    .set_current_expr(expr.args.last().unwrap().data.into());
+                self.cmp(&expr.args.last().unwrap().data, false, false);
+
+                self.code_buffer.restore_current_expr(orig_loc);
+
+                true
+            }
             "if" => {
                 let cond = &expr.args[0].data;
                 let then_block = &expr.args[1].data;
@@ -1194,29 +1237,33 @@ impl<'a> Compiler<'a> {
 
                 true
             }
-            "{" => {
-                if expr.args.is_empty() {
-                    self.cmp(self.arena.nil, false, true);
-                    return true;
+            "function" => {
+                let forms = &expr.args[0].data;
+                let body = &expr.args[1].data;
+
+                let SexpKind::List(forms) = &forms.kind else {
+                    return false;
+                };
+
+                let tmp = CompilerContext::new_function(&self.context, forms, body);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                let comp_body = self.gen_code(body, self.code_buffer.get_current_expr());
+                let data = self.arena.alloc_slice_copy(&[
+                    self.arena.alloc(SexpKind::List(forms.clone()).into()) as &'a Sexp<'a>,
+                    self.arena.alloc(SexpKind::Bc(comp_body).into()) as &'a Sexp<'a>,
+                    self.arena.nil,
+                ]);
+                let index = self
+                    .code_buffer
+                    .add_const_sexp(self.arena.alloc(SexpKind::Vec(data).into()));
+                self.code_buffer.add_instr2(BcOp::MAKECLOSURE_OP, index);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
-
-                let orig_loc = std::mem::replace(&mut self.code_buffer.current_expr, None);
-
-                let tailcall = self.context.tailcall;
-                self.context.tailcall = false;
-                for inner in &expr.args[0..(expr.args.len() - 1)] {
-                    self.code_buffer.set_current_expr(inner.data.into());
-                    self.cmp(&inner.data, false, false);
-                    self.code_buffer.set_current_expr(inner.data.into());
-                    self.code_buffer.add_instr(BcOp::POP_OP);
-                }
-                self.context.tailcall = tailcall;
-
-                self.code_buffer
-                    .set_current_expr(expr.args.last().unwrap().data.into());
-                self.cmp(&expr.args.last().unwrap().data, false, false);
-
-                self.code_buffer.restore_current_expr(orig_loc);
 
                 true
             }
@@ -1238,106 +1285,153 @@ impl<'a> Compiler<'a> {
                     true
                 }
             }
-            "<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, false),
-            "<<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, true),
-            /*
-            "<-" if expr.args.len() == 2
-                && false
-                && matches!(&expr.args[0].data.kind, SexpKind::Lang(_)) =>
-            {
-                if !self.context.top_level {
-                    self.code_buffer.add_instr(BcOp::INCLNKSTK_OP);
+            "local" if expr.args.len() == 1 => {
+                let fun_sym = lang::Sym::new("function".into());
+                let fun_sym: lang::Target = fun_sym.into();
+                let data = self.arena.alloc_slice_clone(&[
+                    data::TaggedSexp::new(self.arena.nil),
+                    expr.args[0].clone(),
+                    data::TaggedSexp::new(self.arena.nil),
+                ]);
+                let args = data::List { data };
+                let lang = self.arena.alloc(lang::Lang::new(fun_sym, args));
+                let target: lang::Target = lang::Target::Lang(lang);
+                let lang = self
+                    .arena
+                    .alloc(lang::Lang::new(target, self.arena.nil_list));
+
+                let orig = self.code_buffer.set_current_expr(ConstPoolItem::Lang(lang));
+                self.cmp_call(lang, true);
+                self.code_buffer.restore_current_expr(orig);
+
+                true
+            }
+            "return" if expr.args.len() > 1 || self.dots_or_missing(&expr.args) => {
+                self.cmp_special(expr)
+            }
+            "return" => {
+                let mut val: &'a Sexp<'a> = self.arena.nil;
+                if expr.args.len() == 1 {
+                    val = &expr.args[0].data;
                 }
-                // start op = STARTASSIGN.OP
-                // end op = ENDASSIGN.OP
+
                 let tailcall = self.context.tailcall;
                 self.context.tailcall = false;
-                self.cmp(expr.args[1].data, false, true);
+                self.cmp(val, false, true);
                 self.context.tailcall = tailcall;
 
-                let sym = self
-                    .get_assigned_var(&expr.args[0].data)
-                    .expect("Target of the assign cannot be resoved");
-
-                let index = self.code_buffer.add_const_sym(sym);
-                self.code_buffer.add_instr2(BcOp::STARTASSIGN_OP, index);
-
-                true
-            }*/
-            "+" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
-                true
-            }
-            "-" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SUB_OP);
-                true
-            }
-            "+" if expr.args.len() == 1 => {
-                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UPLUS_OP);
-                true
-            }
-            "-" if expr.args.len() == 1 => {
-                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UMINUS_OP);
-                true
-            }
-            "*" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::MUL_OP);
-                true
-            }
-            "/" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::DIV_OP);
-                true
-            }
-            "^" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXPT_OP);
-                true
-            }
-            ":" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::COLON_OP);
-                true
-            }
-            "seq_along" if expr.args.len() == 1 => {
-                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQALONG_OP);
-                true
-            }
-            "seq_len" if expr.args.len() == 1 => {
-                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQLEN_OP);
-                true
-            }
-            "exp" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXP_OP);
-                true
-            }
-            "sqrt" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SQRT_OP);
-                true
-            }
-            "[[" => {
-                if self.dots_or_missing(&expr.args) {
-                    self.cmp_dispatch(BcOp::STARTSUBSET2_OP, BcOp::DFLTSUBSET2_OP, expr, true)
+                if self.context.need_returnjmp {
+                    self.code_buffer.add_instr(BcOp::RETURNJMP_OP);
                 } else {
-                    let nidx = expr.args.len() - 1;
-                    let (code, rank) = match nidx {
-                        1 => (BcOp::VECSUBSET2_OP, false),
-                        2 => (BcOp::MATSUBSET2_OP, false),
-                        _ => (BcOp::SUBSET2_N_OP, true),
-                    };
-                    self.cmp_subset_dispatch(BcOp::STARTSUBSET2_N_OP, code, rank, expr)
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
+
+                true
             }
-            "[" => {
-                if self.dots_or_missing(&expr.args) {
-                    self.cmp_dispatch(BcOp::STARTSUBSET_OP, BcOp::DFLTSUBSET_OP, expr, true)
+            ".Internal" => match &expr.args[0].data.kind {
+                SexpKind::Lang(lang) => {
+                    let name = if let lang::Target::Sym(sym) = &lang.target {
+                        sym
+                    } else {
+                        return self.cmp_special(expr);
+                    };
+                    if self.is_builtin_internal(name.data) {
+                        self.cmp_builtin(lang, true)
+                    } else {
+                        return self.cmp_special(expr);
+                    }
+                }
+                _ => self.cmp_special(expr),
+            },
+            "&&" => {
+                let tmp = CompilerContext::new_arg(&self.context);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                let index = self.code_buffer.add_const(expr.into());
+
+                let label = self.code_buffer.make_label();
+                self.cmp(&expr.args[0].data, false, true);
+                self.code_buffer
+                    .add_instr_n(BcOp::AND1ST_OP, &[index, DEFLABEL]);
+                self.code_buffer.set_label(label);
+                self.cmp(&expr.args[1].data, false, true);
+                self.code_buffer.add_instr2(BcOp::AND2ND_OP, index);
+                self.code_buffer.put_label(label);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+                true
+            }
+            "||" => {
+                let tmp = CompilerContext::new_arg(&self.context);
+                let orig = std::mem::replace(&mut self.context, tmp);
+
+                let index = self.code_buffer.add_const(expr.into());
+
+                let label = self.code_buffer.make_label();
+                self.cmp(&expr.args[0].data, false, true);
+                self.code_buffer
+                    .add_instr_n(BcOp::OR1ST_OP, &[index, DEFLABEL]);
+                self.code_buffer.set_label(label);
+                self.cmp(&expr.args[1].data, false, true);
+                self.code_buffer.add_instr2(BcOp::OR2ND_OP, index);
+                self.code_buffer.put_label(label);
+
+                let _ = std::mem::replace(&mut self.context, orig);
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+                true
+            }
+            "repeat" => {
+                let body = &expr.args[0].data;
+
+                if self.check_skip_loopctx(body, true) {
+                    self.cmp_repeat_body(body);
                 } else {
-                    let nidx = expr.args.len() - 1;
-                    let (code, rank) = match nidx {
-                        1 => (BcOp::VECSUBSET_OP, false),
-                        2 => (BcOp::MATSUBSET_OP, false),
-                        _ => (BcOp::SUBSET_N_OP, true),
-                    };
-                    self.cmp_subset_dispatch(BcOp::STARTSUBSET_N_OP, code, rank, expr)
+                    let returnjmp = self.context.need_returnjmp;
+                    self.context.need_returnjmp = true;
+                    let long_jump_label = self.code_buffer.make_label();
+                    self.code_buffer
+                        .add_instr_n(BcOp::STARTLOOPCNTXT_OP, &[0, DEFLABEL]);
+                    self.code_buffer.set_label(long_jump_label);
+                    self.cmp_repeat_body(body);
+                    self.code_buffer.put_label(long_jump_label);
+                    self.code_buffer.add_instr2(BcOp::ENDLOOPCNTXT_OP, 0);
+                    self.context.need_returnjmp = returnjmp;
                 }
+
+                self.code_buffer.add_instr(BcOp::LDNULL_OP);
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
             }
+            "break" => match &self.context.loop_ctx {
+                Some(loop_ctx) => {
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+                    self.code_buffer.set_label(loop_ctx.end_label);
+                    true
+                }
+                None => {
+                    self.warnings.push(Warning::NoLoopContext);
+                    false
+                }
+            },
+            "next" => match &self.context.loop_ctx {
+                Some(loop_ctx) if loop_ctx.goto_ok => {
+                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+                    self.code_buffer.set_label(loop_ctx.loop_label);
+                    true
+                }
+                _ => self.cmp_special(expr),
+            },
             "while" => {
                 let cond = &expr.args[0].data;
                 let body = &expr.args[1].data;
@@ -1410,11 +1504,74 @@ impl<'a> Compiler<'a> {
                 }
                 true
             }
-            "switch" => {
-                if expr.args.len() < 1 || self.any_dots(expr) {
-                    return self.cmp_special(expr);
+            "+" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::ADD_OP);
+                true
+            }
+            "+" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UPLUS_OP);
+                true
+            }
+            "-" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SUB_OP);
+                true
+            }
+            "-" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::UMINUS_OP);
+                true
+            }
+            "*" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::MUL_OP);
+                true
+            }
+            "/" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::DIV_OP);
+                true
+            }
+            "^" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXPT_OP);
+                true
+            }
+            "exp" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXP_OP);
+                true
+            }
+            "sqrt" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::SQRT_OP);
+                true
+            }
+            "log" => {
+                if (expr.args.len() != 1 && expr.args.len() != 2) || self.dots_or_missing(&expr.args) {
+                    self.cmp_builtin(expr, false);
+                    return true;
                 }
-                self.cmp_switch(expr)
+
+                let idx = self.code_buffer.add_const(expr.into());
+
+                let taicall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(&expr.args[0].data, false, true);
+                self.context.tailcall = taicall;
+
+                if expr.args.len() == 1 {
+                    self.code_buffer.add_instr2(BcOp::LOG_OP, idx);
+                } else {
+                    let tmp = CompilerContext::new_arg(&self.context);
+                    let mut orig = std::mem::replace(&mut self.context, tmp);
+
+                    self.cmp(&expr.args[1].data, false, true);
+
+                    self.code_buffer.add_instr2(BcOp::LOGBASE_OP, idx);
+
+                    std::mem::swap(&mut self.context, &mut orig);
+                }
+
+
+                if self.context.tailcall {
+                    self.code_buffer.add_instr(BcOp::RETURN_OP);
+                }
+
+                true
             }
             "==" if expr.args.len() == 2 => {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EQ_OP);
@@ -1452,48 +1609,81 @@ impl<'a> Compiler<'a> {
                 self.cmp_prim1(&expr.args[0].data, expr, BcOp::NOT_OP);
                 true
             }
-            "&&" => {
-                let tmp = CompilerContext::new_arg(&self.context);
-                let orig = std::mem::replace(&mut self.context, tmp);
+            "$" if expr.args.len() != 2 || self.any_dots(expr) => self.cmp_special(expr),
+            "$" if expr.args.len() == 2 => match &expr.args[1].data.kind {
+                SexpKind::Sym(_) => {
+                    let tmp = CompilerContext::new_arg(&self.context);
+                    let orig = std::mem::replace(&mut self.context, tmp);
+                    self.cmp(&expr.args[0].data, false, true);
+                    let _ = std::mem::replace(&mut self.context, orig);
 
-                let index = self.code_buffer.add_const(expr.into());
+                    let expr_idx = self.code_buffer.add_const(expr.into());
+                    let sym_idx = self.code_buffer.add_const(expr.args[1].data.into());
 
-                let label = self.code_buffer.make_label();
-                self.cmp(&expr.args[0].data, false, true);
+                    self.code_buffer
+                        .add_instr_n(BcOp::DOLLAR_OP, &[expr_idx, sym_idx]);
+                    if self.context.tailcall {
+                        self.code_buffer.add_instr(BcOp::RETURN_OP);
+                    }
+
+                    true
+                }
+                _ => self.cmp_special(expr),
+            },
+            "is.character" => self.cmp_is(BcOp::ISCHARACTER_OP, expr),
+            "is.complex" => self.cmp_is(BcOp::ISCOMPLEX_OP, expr),
+            "is.double" => self.cmp_is(BcOp::ISDOUBLE_OP, expr),
+            "is.integer" => self.cmp_is(BcOp::ISINTEGER_OP, expr),
+            "is.logical" => self.cmp_is(BcOp::ISLOGICAL_OP, expr),
+            "is.name" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
+            "is.null" => self.cmp_is(BcOp::ISNULL_OP, expr),
+            "is.object" => self.cmp_is(BcOp::ISOBJECT_OP, expr),
+            "is.symbol" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
+            ".Call" => {
+                // comment in orig says
+                // is.null(names(e)) is missing
+                if self.dots_or_missing(&expr.args)
+                    || expr.args.len() < 1
+                    || expr.args.len() > DOTCALL_MAX + 1
+                {
+                    return self.cmp_builtin(expr, false);
+                }
+                let tailcall = self.context.tailcall;
+                self.context.tailcall = false;
+                self.cmp(expr.args[0].data, false, true);
+                self.context.tailcall = tailcall;
+
+                let nargs = expr.args.len() - 1;
+                if nargs > 0 {
+                    let tmp = CompilerContext::new_arg(&self.context);
+                    let orig = std::mem::replace(&mut self.context, tmp);
+                    for arg in expr.args[1..].iter() {
+                        self.cmp(arg.data, false, true);
+                    }
+
+                    _ = std::mem::replace(&mut self.context, orig);
+                }
+
+                let index = self.code_buffer.add_const_lang(expr);
                 self.code_buffer
-                    .add_instr_n(BcOp::AND1ST_OP, &[index, DEFLABEL]);
-                self.code_buffer.set_label(label);
-                self.cmp(&expr.args[1].data, false, true);
-                self.code_buffer.add_instr2(BcOp::AND2ND_OP, index);
-                self.code_buffer.put_label(label);
-
-                let _ = std::mem::replace(&mut self.context, orig);
+                    .add_instr_n(BcOp::DOTCALL_OP, &[index, nargs as i32]);
 
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
                 }
+
                 true
             }
-            "||" => {
-                let tmp = CompilerContext::new_arg(&self.context);
-                let orig = std::mem::replace(&mut self.context, tmp);
-
-                let index = self.code_buffer.add_const(expr.into());
-
-                let label = self.code_buffer.make_label();
-                self.cmp(&expr.args[0].data, false, true);
-                self.code_buffer
-                    .add_instr_n(BcOp::OR1ST_OP, &[index, DEFLABEL]);
-                self.code_buffer.set_label(label);
-                self.cmp(&expr.args[1].data, false, true);
-                self.code_buffer.add_instr2(BcOp::OR2ND_OP, index);
-                self.code_buffer.put_label(label);
-
-                let _ = std::mem::replace(&mut self.context, orig);
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
+            ":" if expr.args.len() == 2 => {
+                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::COLON_OP);
+                true
+            }
+            "seq_along" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQALONG_OP);
+                true
+            }
+            "seq_len" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::SEQLEN_OP);
                 true
             }
             "::" | ":::" => {
@@ -1530,143 +1720,47 @@ impl<'a> Compiler<'a> {
 
                 true
             }
-            "break" => match &self.context.loop_ctx {
-                Some(loop_ctx) => {
-                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
-                    self.code_buffer.set_label(loop_ctx.end_label);
-                    true
-                }
-                None => {
-                    self.warnings.push(Warning::NoLoopContext);
-                    false
-                }
-            },
-            "next" => match &self.context.loop_ctx {
-                Some(loop_ctx) if loop_ctx.goto_ok => {
-                    self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
-                    self.code_buffer.set_label(loop_ctx.loop_label);
-                    true
-                }
-                _ => self.cmp_special(expr),
-            },
-            "function" => {
-                let forms = &expr.args[0].data;
-                let body = &expr.args[1].data;
-
-                let SexpKind::List(forms) = &forms.kind else {
-                    return false;
+            "with" | "require" => {
+                let lang::Target::Sym(sym2) = &expr.target else {
+                    unreachable!()
                 };
-
-                let tmp = CompilerContext::new_function(&self.context, forms, body);
-                let orig = std::mem::replace(&mut self.context, tmp);
-
-                let comp_body = self.gen_code(body, self.code_buffer.get_current_expr());
-                let data = self.arena.alloc_slice_copy(&[
-                    self.arena.alloc(SexpKind::List(forms.clone()).into()) as &'a Sexp<'a>,
-                    self.arena.alloc(SexpKind::Bc(comp_body).into()) as &'a Sexp<'a>,
-                    self.arena.nil,
-                ]);
-                let index = self
-                    .code_buffer
-                    .add_const_sexp(self.arena.alloc(SexpKind::Vec(data).into()));
-                self.code_buffer.add_instr2(BcOp::MAKECLOSURE_OP, index);
-
-                let _ = std::mem::replace(&mut self.context, orig);
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-
+                self.cmp_call_sym_fun(expr, sym2, &expr.args);
                 true
             }
-            "return" if expr.args.len() > 1 || self.dots_or_missing(&expr.args) => {
-                self.cmp_special(expr)
-            }
-            "return" => {
-                let mut val: &'a Sexp<'a> = self.arena.nil;
-                if expr.args.len() == 1 {
-                    val = &expr.args[0].data;
+            "switch" => {
+                if expr.args.len() < 1 || self.any_dots(expr) {
+                    return self.cmp_special(expr);
                 }
-
-                let tailcall = self.context.tailcall;
-                self.context.tailcall = false;
-                self.cmp(val, false, true);
-                self.context.tailcall = tailcall;
-
-                if self.context.need_returnjmp {
-                    self.code_buffer.add_instr(BcOp::RETURNJMP_OP);
+                self.cmp_switch(expr)
+            }
+            "=" | "<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, false),
+            "<<-" => self.cmp_assign(&expr.args[0].data, &expr.args[1].data, expr, true),
+            "[" => {
+                if self.dots_or_missing(&expr.args) {
+                    self.cmp_dispatch(BcOp::STARTSUBSET_OP, BcOp::DFLTSUBSET_OP, expr, true)
                 } else {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-
-                true
-            }
-            "$" if expr.args.len() != 2 || self.any_dots(expr) => self.cmp_special(expr),
-            "$" if expr.args.len() == 2 => match &expr.args[1].data.kind {
-                SexpKind::Sym(_) => {
-                    let tmp = CompilerContext::new_arg(&self.context);
-                    let orig = std::mem::replace(&mut self.context, tmp);
-                    self.cmp(&expr.args[0].data, false, true);
-                    let _ = std::mem::replace(&mut self.context, orig);
-
-                    let expr_idx = self.code_buffer.add_const(expr.into());
-                    let sym_idx = self.code_buffer.add_const(expr.args[1].data.into());
-
-                    self.code_buffer
-                        .add_instr_n(BcOp::DOLLAR_OP, &[expr_idx, sym_idx]);
-                    if self.context.tailcall {
-                        self.code_buffer.add_instr(BcOp::RETURN_OP);
-                    }
-
-                    true
-                }
-                _ => self.cmp_special(expr),
-            },
-            "local" if expr.args.len() == 1 => {
-                let fun_sym = lang::Sym::new("function".into());
-                let fun_sym: lang::Target = fun_sym.into();
-                let data = self.arena.alloc_slice_clone(&[
-                    data::TaggedSexp::new(self.arena.nil),
-                    expr.args[0].clone(),
-                    data::TaggedSexp::new(self.arena.nil),
-                ]);
-                let args = data::List { data };
-                let lang = self.arena.alloc(lang::Lang::new(fun_sym, args));
-                let target: lang::Target = lang::Target::Lang(lang);
-                let lang = self
-                    .arena
-                    .alloc(lang::Lang::new(target, self.arena.nil_list));
-
-                let orig = self.code_buffer.set_current_expr(ConstPoolItem::Lang(lang));
-                self.cmp_call(lang, true);
-                self.code_buffer.restore_current_expr(orig);
-
-                true
-            }
-            "is.character" => self.cmp_is(BcOp::ISCHARACTER_OP, expr),
-            "is.complex" => self.cmp_is(BcOp::ISCOMPLEX_OP, expr),
-            "is.double" => self.cmp_is(BcOp::ISDOUBLE_OP, expr),
-            "is.integer" => self.cmp_is(BcOp::ISINTEGER_OP, expr),
-            "is.logical" => self.cmp_is(BcOp::ISLOGICAL_OP, expr),
-            "is.name" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
-            "is.null" => self.cmp_is(BcOp::ISNULL_OP, expr),
-            "is.object" => self.cmp_is(BcOp::ISOBJECT_OP, expr),
-            "is.symbol" => self.cmp_is(BcOp::ISSYMBOL_OP, expr),
-            ".Internal" => match &expr.args[0].data.kind {
-                SexpKind::Lang(lang) => {
-                    let name = if let lang::Target::Sym(sym) = &lang.target {
-                        sym
-                    } else {
-                        return self.cmp_special(expr);
+                    let nidx = expr.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBSET_OP, false),
+                        2 => (BcOp::MATSUBSET_OP, false),
+                        _ => (BcOp::SUBSET_N_OP, true),
                     };
-                    if self.is_builtin_internal(name.data) {
-                        self.cmp_builtin(lang, true)
-                    } else {
-                        return self.cmp_special(expr);
-                    }
+                    self.cmp_subset_dispatch(BcOp::STARTSUBSET_N_OP, code, rank, expr)
                 }
-                _ => self.cmp_special(expr),
-            },
+            }
+            "[[" => {
+                if self.dots_or_missing(&expr.args) {
+                    self.cmp_dispatch(BcOp::STARTSUBSET2_OP, BcOp::DFLTSUBSET2_OP, expr, true)
+                } else {
+                    let nidx = expr.args.len() - 1;
+                    let (code, rank) = match nidx {
+                        1 => (BcOp::VECSUBSET2_OP, false),
+                        2 => (BcOp::MATSUBSET2_OP, false),
+                        _ => (BcOp::SUBSET2_N_OP, true),
+                    };
+                    self.cmp_subset_dispatch(BcOp::STARTSUBSET2_N_OP, code, rank, expr)
+                }
+            }
             _ if info.base_var && MATH1_FUNCS.contains(&sym) => {
                 if self.dots_or_missing(&expr.args) {
                     return self.cmp_builtin(expr, false);
@@ -1693,48 +1787,11 @@ impl<'a> Compiler<'a> {
 
                 true
             }
-            ".Call" => {
-                // comment in orig says
-                // this should match DOTCALL_MAX in eval.c
-                let nargsmax = 16;
-                // is.null(names(e)) is missing
-                if self.dots_or_missing(&expr.args)
-                    || expr.args.len() < 1
-                    || expr.args.len() > nargsmax + 1
-                {
-                    return self.cmp_builtin(expr, false);
-                }
-                let tailcall = self.context.tailcall;
-                self.context.tailcall = false;
-                self.cmp(expr.args[0].data, false, true);
-                self.context.tailcall = tailcall;
-
-                let nargs = expr.args.len() - 1;
-                if nargs > 0 {
-                    let tmp = CompilerContext::new_arg(&self.context);
-                    let orig = std::mem::replace(&mut self.context, tmp);
-                    for arg in expr.args[1..].iter() {
-                        self.cmp(arg.data, false, true);
-                    }
-
-                    _ = std::mem::replace(&mut self.context, orig);
-                }
-
-                let index = self.code_buffer.add_const_lang(expr);
-                self.code_buffer
-                    .add_instr_n(BcOp::DOTCALL_OP, &[index, nargs as i32]);
-
-                if self.context.tailcall {
-                    self.code_buffer.add_instr(BcOp::RETURN_OP);
-                }
-
-                true
-            }
+            _ if info.base_var && self.builtins.contains(sym) => self.cmp_builtin(expr, false),
+            _ if info.base_var && self.specials.contains(sym) => self.cmp_special(expr),
             _ if info.base_var && SAFE_BASE_INTERNALS.contains(&sym) => {
                 self.cmp_simple_internal(sym, expr)
             }
-            _ if info.base_var && self.builtins.contains(sym) => self.cmp_builtin(expr, false),
-            _ if info.base_var && self.specials.contains(sym) => self.cmp_special(expr),
             _ => false,
         }
     }
@@ -1998,16 +2055,16 @@ impl<'a> Compiler<'a> {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "if" | "{" | "<-" | "<<-" | "+" | "-" | "*" | "/" | "^" | "exp" | ":" | "seq_along"
-            | "seq_len" | "sqrt" | "while" | "for" | "break" | "next" | "return" | "function"
-            | "local" | "[[" | "[" | ".Internal" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&"
-            | "|" | "!" | "&&" | "||" | "$" => true,
-
-            "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
-            | "is.name" | "is.null" | "is.object" | "is.symbol" => true,
-
+            "{" | "if" | "function" | "(" | "return" | ".Internal" | "&&" | "||" | "repeat"
+            | "break" | "next" | "while" | "for" | "log" | "is.character" | "is.complex"
+            | "is.double" | "is.integer" | "is.logical" | "is.name" | "is.null" | "is.object"
+            | "is.symbol" | ".Call" | "::" | ":::" | "with" | "require" | "switch" | "=" | "<-"
+            | "<<-" | "[" | "[[" | "local"| "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "=="
+            | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!" | "$" | ":" | "seq_along"
+            | "seq_len" => true,
             _ if MATH1_FUNCS.contains(&sym) => true,
             _ if SAFE_BASE_INTERNALS.contains(&sym) => true,
+            _ if FORBIDDEN_INLINES.contains(&sym) => false,
             _ if self.builtins.contains(sym) => true,
             _ if self.specials.contains(sym) => true,
             _ => false,
@@ -2071,6 +2128,24 @@ impl<'a> Compiler<'a> {
         std::mem::swap(&mut self.context, &mut orig_context);
     }
 
+    fn cmp_repeat_body(&mut self, body: &'a Sexp<'a>) {
+        let loop_label = self.code_buffer.make_label();
+        let end_label = self.code_buffer.make_label();
+        self.code_buffer.put_label(loop_label);
+
+        let tmp = CompilerContext::new_loop(&self.context, loop_label, end_label);
+        let orig = std::mem::replace(&mut self.context, tmp);
+
+        self.cmp(body, false, true);
+
+        self.code_buffer.add_instr(BcOp::POP_OP);
+        self.code_buffer.add_instr2(BcOp::GOTO_OP, DEFLABEL);
+        self.code_buffer.set_label(loop_label);
+        self.code_buffer.put_label(end_label);
+
+        let _ = std::mem::replace(&mut self.context, orig);
+    }
+
     fn cmp_while_body(&mut self, full: &'a lang::Lang<'a>, cond: &'a Sexp<'a>, body: &'a Sexp<'a>) {
         let loop_label = self.code_buffer.make_label();
         let end_label = self.code_buffer.make_label();
@@ -2131,13 +2206,13 @@ impl<'a> Compiler<'a> {
     fn check_skip_loopctx_lang(&self, lang: &'a lang::Lang<'a>, break_ok: bool) -> bool {
         match &lang.target {
             lang::Target::Sym(sym) => {
-                if !break_ok && matches!(sym.data, "break" | "next") {
+                if !break_ok && LOOP_BREAK_FUNS.contains(&sym.data) {
                     false
                 } else if self.is_loop_stop_fun(sym.data) {
                     true
                 } else if self.is_loop_top_fun(sym.data) {
                     self.check_skip_loopctx_list(&lang.args, break_ok)
-                } else if matches!(sym.data, "eval" | "evalq" | "source") {
+                } else if EVAL_FUNS.contains(&sym.data) {
                     false
                 } else {
                     self.check_skip_loopctx_list(&lang.args, false)
@@ -2168,11 +2243,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn is_loop_stop_fun(&self, name: &'a str) -> bool {
-        matches!(name, "function" | "for" | "while" | "repeat") && self.is_base_var(name)
+        LOOP_STOP_FUNS.contains(&name) && self.is_base_var(name)
     }
 
     fn is_loop_top_fun(&self, name: &'a str) -> bool {
-        matches!(name, "(" | "{" | "if") && self.is_base_var(name)
+        LOOP_TOP_FUNS.contains(&name) && self.is_base_var(name)
     }
 
     fn cmp_switch(&mut self, switch: &'a lang::Lang<'a>) -> bool {
@@ -2515,6 +2590,103 @@ impl<'a> Compiler<'a> {
             self.find_locals(&arg.data);
         }
     }
+
+    fn constant_fold(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a Sexp<'a>> {
+        match &sexp.kind {
+            SexpKind::Lang(lang) => self.constant_fold_call(lang),
+            SexpKind::Sym(sym) => self.constant_fold_sym(sym),
+            SexpKind::Promise { .. } => panic!("can't constant fold literal promises"),
+            SexpKind::Bc(_) => panic!("can't constant fold literal bytecode objects"),
+            _ => self.check_const(sexp),
+        }
+    }
+
+    fn check_const(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a Sexp<'a>> {
+        match &sexp.kind {
+            SexpKind::Nil => Some(sexp),
+            SexpKind::Vec(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
+            _ => None,
+        }
+    }
+
+    fn constant_fold_sym(&mut self, sym: &'a lang::Sym<'a>) -> Option<&'a Sexp<'a>> {
+        let name = sym.data;
+
+        if !ALLOWED_FOLDABLE_CONSTS.contains(&name) || !self.is_base_var(name) {
+            return None;
+        }
+
+        let lookup = self.find_baseenv(name).or(self.find_namespacebase(name))
+            .expect("guaranteed by `self.is_base_var(name)`");
+        self.check_const(lookup)
+    }
+
+    fn constant_fold_call(&mut self, call: &'a lang::Lang<'a>) -> Option<&'a Sexp<'a>> {
+        let lang::Target::Sym(fun) = &call.target else {
+            return None;
+        };
+        let fun_name = fun.data;
+
+        if !ALLOWED_FOLDABLE_FUNS.contains(&fun_name) {
+            return None;
+        }
+
+        if self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var) {
+            return None
+        }
+
+        let lookup = self.find_baseenv(fun_name).or(self.find_namespacebase(fun_name))
+            .expect("guaranteed by `self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var)`");
+        if !matches!(&lookup.kind, SexpKind::Closure(_)) {
+            return None;
+        };
+
+        let args = self.build_args(&call.args)?;
+        let out = self.do_constant_fold_call(fun_name, args)?;
+        self.check_const(out)
+    }
+
+    fn build_args(&mut self, args: &'a data::List<'a>) -> Option<Vec<data::TaggedSexp<'a>>> {
+        args.iter().map(|data::TaggedSexp { tag, data: arg  }| {
+            if matches!(arg.kind, SexpKind::MissingArg) {
+                return None;
+            }
+
+            let arg_value = self.constant_fold(arg)?;
+
+            if !matches!(&arg_value.kind, SexpKind::Logic(_) | SexpKind::Real(_) | SexpKind::Int(_) | SexpKind::Complex(_) | SexpKind::Str(_)) {
+                return None;
+            }
+
+            Some(data::TaggedSexp { tag: *tag, data: arg_value })
+        }).collect()
+    }
+
+    fn do_constant_fold_call(
+        &mut self,
+        fun_name: &'a str,
+        args: Vec<data::TaggedSexp<'a>>,
+    ) -> Option<&'a Sexp<'a>> {
+        let constant_fold = ConstantFold::new(self.arena);
+        match fun_name {
+            "(" if args.len() == 1 => constant_fold.paren(args[0].data),
+            "c" => constant_fold.c(&args),
+            "+" if args.len() == 1 => constant_fold.plus(args[0].data),
+            "+" if args.len() == 2 => constant_fold.add(args[0].data, args[1].data),
+            "-" if args.len() == 1 => constant_fold.minus(args[0].data),
+            "-" if args.len() == 2 => constant_fold.sub(args[0].data, args[1].data),
+            "*" if args.len() == 2 => constant_fold.mul(args[0].data, args[1].data),
+            "/" if args.len() == 2 => constant_fold.div(args[0].data, args[1].data),
+            ":" if args.len() == 2 => constant_fold.colon(args[0].data, args[1].data),
+            "^" if args.len() == 2 => constant_fold.pow(args[0].data, args[1].data),
+            "log" if args.len() == 1 => constant_fold.log(args[0].data),
+            "log2" if args.len() == 1 => constant_fold.log2(args[0].data),
+            "sqrt" if args.len() == 1 => constant_fold.sqrt(args[0].data),
+            "rep" if args.len() == 2 => constant_fold.rep(args[0].data, args[1].data),
+            "seq.int" if args.len() == 3 => constant_fold.seq_int(args[0].data, args[1].data, args[2].data),
+            _ => None,
+        }
+    }
 }
 
 pub struct CompilerOptions {
@@ -2523,7 +2695,7 @@ pub struct CompilerOptions {
 
 impl Default for CompilerOptions {
     fn default() -> Self {
-        Self { inline_level: 2 }
+        Self { inline_level: DEFAULT_OPTIMIZATION_LEVEL }
     }
 }
 

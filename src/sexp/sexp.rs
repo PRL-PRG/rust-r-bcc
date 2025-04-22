@@ -89,7 +89,7 @@ impl<'a> Sexp<'a> {
 }
 
 pub mod data {
-    use std::ops::Deref;
+    use std::ops::{Add, Deref, Div, Mul, Neg, Sub};
 
     use super::Sexp;
 
@@ -133,10 +133,19 @@ pub mod data {
         }
     }
 
-    #[derive(Debug, PartialEq, Default)]
+    #[derive(Copy, Clone, Debug, PartialEq, Default)]
     pub struct Complex {
         pub real: Double,
         pub imaginary: Double,
+    }
+
+    impl From<Double> for Complex {
+        fn from(value: Double) -> Self {
+            Complex {
+                real: value,
+                imaginary: Double::default(),
+            }
+        }
     }
 
     #[derive(Clone, Copy)]
@@ -225,9 +234,9 @@ pub mod data {
         NA,
     }
 
-    impl Into<i32> for &Logic {
-        fn into(self) -> i32 {
-            match self {
+    impl From<&Logic> for i32 {
+        fn from(value: &Logic) -> i32 {
+            match value {
                 Logic::True => 1,
                 Logic::False => 0,
                 Logic::NA => i32::MIN,
@@ -277,6 +286,43 @@ pub mod data {
         }
     }
 
+    impl From<i32> for Double {
+        fn from(value: i32) -> Self {
+            (value as f64).into()
+        }
+    }
+
+    impl From<i32> for Complex {
+        fn from(value: i32) -> Self {
+            Complex {
+                real: value.into(),
+                imaginary: Double::default(),
+            }
+        }
+    }
+
+    impl From<Double> for i32 {
+        fn from(value: Double) -> Self {
+            if value.data.is_nan() {
+                i32::MIN
+            } else {
+                value.data as i32
+            }
+        }
+    }
+
+    impl From<Complex> for i32 {
+        fn from(value: Complex) -> Self {
+            value.real.into()
+        }
+    }
+
+    impl From<Complex> for Double {
+        fn from(value: Complex) -> Self {
+            value.real
+        }
+    }
+
     impl Deref for Double {
         type Target = f64;
 
@@ -288,6 +334,129 @@ pub mod data {
     impl PartialEq for Double {
         fn eq(&self, other: &Self) -> bool {
             (self.data.is_nan() && other.data.is_nan()) || self.data == other.data
+        }
+    }
+
+    impl Neg for Double {
+        type Output = Self;
+
+        fn neg(self) -> Self::Output {
+            Double::from(-self.data)
+        }
+    }
+
+    impl Add for Double {
+        type Output = Self;
+
+        fn add(self, other: Self) -> Self::Output {
+            Double::from(self.data + other.data)
+        }
+    }
+
+    impl Sub for Double {
+        type Output = Self;
+
+        fn sub(self, other: Self) -> Self::Output {
+            Double::from(self.data - other.data)
+        }
+    }
+
+    impl Mul for Double {
+        type Output = Self;
+
+        fn mul(self, other: Self) -> Self::Output {
+            Double::from(self.data * other.data)
+        }
+    }
+
+    impl Div for Double {
+        type Output = Self;
+
+        fn div(self, other: Self) -> Self::Output {
+            Double::from(self.data / other.data)
+        }
+    }
+
+    impl Double {
+        pub fn pow(self, other: Self) -> Self {
+            Double::from(self.data.powf(other.data))
+        }
+    }
+
+    impl Neg for Complex {
+        type Output = Self;
+
+        fn neg(self) -> Self::Output {
+            Complex {
+                real: -self.real,
+                imaginary: -self.imaginary,
+            }
+        }
+    }
+
+    impl Add for Complex {
+        type Output = Self;
+
+        fn add(self, other: Self) -> Self::Output {
+            Complex {
+                real: self.real + other.real,
+                imaginary: self.imaginary + other.imaginary,
+            }
+        }
+    }
+
+    impl Sub for Complex {
+        type Output = Self;
+
+        fn sub(self, other: Self) -> Self::Output {
+            Complex {
+                real: self.real - other.real,
+                imaginary: self.imaginary - other.imaginary,
+            }
+        }
+    }
+
+    impl Mul for Complex {
+        type Output = Self;
+
+        fn mul(self, other: Self) -> Self::Output {
+            Complex {
+                real: self.real * other.real - self.imaginary * other.imaginary,
+                imaginary: self.real * other.imaginary + self.imaginary * other.real,
+            }
+        }
+    }
+
+    impl Div for Complex {
+        type Output = Self;
+
+        fn div(self, other: Self) -> Self::Output {
+            let denom = other.real * other.real + other.imaginary * other.imaginary;
+            Complex {
+                real: (self.real * other.real + self.imaginary * other.imaginary) / denom,
+                imaginary: (self.imaginary * other.real - self.real * other.imaginary) / denom,
+            }
+        }
+    }
+
+    impl Complex {
+        pub fn pow(self, other: Self) -> Complex {
+            let mut r = self.real.hypot(*self.imaginary);
+            let i = self.imaginary.atan2(*self.real);
+            let mut theta = i * *other.real;
+
+            let rho = if *other.imaginary == 0. {
+                r.powf(*other.real)
+            } else {
+                r = r.ln();
+                theta += r * *other.imaginary;
+                (r * *other.real - i * *other.imaginary).exp()
+            };
+
+            Complex {
+                real: (rho * theta.cos()).into(),
+                imaginary: (rho * theta.sin()).into(),
+            }
         }
     }
 }
@@ -348,7 +517,7 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq)]
     pub struct Lang<'a> {
         pub(crate) target: Target<'a>,
         pub(crate) args: super::data::List<'a>,
