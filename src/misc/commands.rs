@@ -1,4 +1,5 @@
 use std::process::Output;
+use std::sync::LazyLock;
 use lazy_format::lazy_format;
 
 pub fn compile_base_package(path_env: &str) {
@@ -23,11 +24,15 @@ pub fn create_testdata(code: &str, path: &str, path_comp: &str, opt: bool) {
 }
 
 fn run_r_script(name: &str, args: &[&str]) {
+    static RSCRIPT: LazyLock<String> = LazyLock::new(|| {
+        std::env::var("RSCRIPT").unwrap_or_else(|_| "Rscript".to_string())
+    });
+    
     let Output {
         status,
         stdout,
         stderr,
-    } = std::process::Command::new("Rscript")
+    } = std::process::Command::new(&*RSCRIPT)
         .arg(format!("./scripts/{name}.R"))
         .args(args)
         .output()
