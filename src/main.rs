@@ -131,6 +131,7 @@ fn bench(opt: bool, log_errors: bool) {
 
     let mut count = 0;
     let mut correct = 0;
+    let mut correct_except_cp = 0;
     let all = orig.hash_frame.env.len();
     let mut compiler = Compiler::new(&arena);
     compiler.set_baseenv(env);
@@ -163,16 +164,30 @@ fn bench(opt: bool, log_errors: bool) {
 
         if &res == corr_closure {
             correct += 1;
+            correct_except_cp += 1;
         } else {
-            eprintln!("fail {key}");
+            if matches!(
+                (&res.body.kind, &corr_closure.body.kind),
+                (SexpKind::Bc(mine), SexpKind::Bc(corr))
+                if mine.instructions == corr.instructions
+            ) {
+                correct_except_cp += 1;
+                eprintln!("fail {key} (only constants)");
+            } else {
+                eprintln!("fail {key}");
+            }
             if log_errors {
-                println!("My compilation:\n{res}\n");
-                println!("Correct compilation:\n{corr_closure}");
+                eprintln!(
+                    "{}",
+                    prettydiff::diff_lines(&res.to_string(), &corr_closure.to_string()),
+                );
             }
         }
     }
 
-    eprintln!("{correct} / {all} ({count})");
+    assert_eq!(count, all);
+    eprintln!("{correct_except_cp} / {all} (ignoring constant pool)");
+    eprintln!("{correct} / {all}");
     println!(
         "{} {} {} {}",
         full_start.elapsed().as_secs_f32(),
