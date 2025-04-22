@@ -2599,6 +2599,11 @@ impl<'a> Compiler<'a> {
     fn check_const(&mut self, sexp: &'a Sexp<'a>) -> Option<&'a Sexp<'a>> {
         match &sexp.kind {
             SexpKind::Nil => Some(sexp),
+            SexpKind::Logic(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
+            SexpKind::Int(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
+            SexpKind::Real(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
+            SexpKind::Complex(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
+            SexpKind::Str(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
             SexpKind::Vec(v) if v.len() <= MAX_CONST_SIZE => Some(sexp),
             _ => None,
         }
