@@ -217,7 +217,11 @@ impl<'a> Compiler<'a> {
         if let Some(r#const) = self.constant_fold(sexp) {
             self.cmp_const(r#const);
         }  else {
-            self.cmp_non_const(sexp, missing_ok);
+            match &sexp.kind {
+                SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
+                SexpKind::Lang(lang) => self.cmp_call(lang, true),
+                _ => self.cmp_const(&sexp),
+            };
         }
 
         self.code_buffer.restore_current_expr(orig);
@@ -241,15 +245,6 @@ impl<'a> Compiler<'a> {
         if self.context.tailcall {
             self.code_buffer.add_instr(BcOp::RETURN_OP);
         }
-    }
-
-    fn cmp_non_const(&mut self, sexp: &'a Sexp<'a>, missing_ok: bool) {
-        match &sexp.kind {
-            SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
-            SexpKind::Nil => self.code_buffer.add_instr(BcOp::LDNULL_OP),
-            SexpKind::Lang(lang) => self.cmp_call(lang, true),
-            _ => self.cmp_const(&sexp),
-        };
     }
 
     fn cmp_sym(&mut self, sym: &'a lang::Sym<'a>, missing_ok: bool) {
