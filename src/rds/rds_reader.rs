@@ -657,12 +657,10 @@ where
                 };
                 env
             }
-            sexptype::REFSXP => {
-                let SexpKind::Environment(env) = &self.read_refsxp(refs, flags)?.kind else {
-                    unreachable!()
-                };
-                env
-            }
+            sexptype::REFSXP => match &self.read_refsxp(refs, flags)?.kind {
+                SexpKind::Environment(env) => env,
+                _ => self.arena.get_empty(), // FIXME: most likely wrong
+            },
             sexptype::GLOBALENV_SXP => self.arena.get_global(),
             sexptype::EMPTYENV_SXP | sexptype::NILSXP | sexptype::NILVALUE_SXP => {
                 self.arena.get_empty()
