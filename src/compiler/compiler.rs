@@ -64,33 +64,10 @@ const MATH1_FUNCS: [&str; 24] = [
 ];
 
 const SAFE_BASE_INTERNALS: [&str; 20] = [
-    "atan2",
-    "besselY",
-    "beta",
-    "choose",
-    "drop",
-    "inherits",
-    "is.vector",
-    "lbeta",
-    "lchoose",
-    "nchar",
-    "polyroot",
-    "typeof",
-    "vector",
-    "which.max",
-    "which.min",
-    "is.loaded",
-    "identical",
-    "match",
-    "rep.int",
-    "rep_len",
+    "atan2", "besselY", "beta", "choose", "drop", "inherits", "is.vector", "lbeta", "lchoose",
+    "nchar", "polyroot", "typeof", "vector", "which.max", "which.min", "is.loaded", "identical",
+    "match", "rep.int", "rep_len",
 ];
-
-// This is a hack because from what I have seen I was not able to
-// query only internals which have their internal set to builtin
-// so these are the values from names.c that I found fall into the
-// internal but are not builtin according to is.builtin.internal (10 in eval)
-const NON_BUILTIN_INTERNAL: [&str; 5] = ["eapply", "lapply", "vapply", "NextMethod", "rbind"];
 
 const FORBIDDEN_INLINES: [&str; 1] = ["standardGeneric"];
 
@@ -1117,7 +1094,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn is_builtin_internal(&self, name: &'a str) -> bool {
-        self.internals.contains(name) && !NON_BUILTIN_INTERNAL.contains(&name)
+        self.internals.contains(name)
     }
 
     fn try_inline(&mut self, expr: &'a lang::Lang<'a>) -> bool {
@@ -1333,7 +1310,7 @@ impl<'a> Compiler<'a> {
                     if self.is_builtin_internal(name.data) {
                         self.cmp_builtin(lang, true)
                     } else {
-                        return self.cmp_special(expr);
+                        self.cmp_special(expr)
                     }
                 }
                 _ => self.cmp_special(expr),
@@ -1527,8 +1504,8 @@ impl<'a> Compiler<'a> {
                 self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXPT_OP);
                 true
             }
-            "exp" if expr.args.len() == 2 => {
-                self.cmp_prim2(&expr.args[0].data, &expr.args[1].data, expr, BcOp::EXP_OP);
+            "exp" if expr.args.len() == 1 => {
+                self.cmp_prim1(&expr.args[0].data, expr, BcOp::EXP_OP);
                 true
             }
             "sqrt" if expr.args.len() == 2 => {
@@ -2050,18 +2027,17 @@ impl<'a> Compiler<'a> {
 
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
-            "{" | "if" | "function" | "(" | "return" | ".Internal" | "&&" | "||" | "repeat"
-            | "break" | "next" | "while" | "for" | "log" | "is.character" | "is.complex"
-            | "is.double" | "is.integer" | "is.logical" | "is.name" | "is.null" | "is.object"
-            | "is.symbol" | ".Call" | "::" | ":::" | "with" | "require" | "switch" | "=" | "<-"
-            | "<<-" | "[" | "[[" | "local"| "+" | "-" | "*" | "/" | "^" | "exp" | "sqrt" | "=="
-            | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!" | "$" | ":" | "seq_along"
-            | "seq_len" => true,
+            "{" | "if" | "function" | "(" | "local" | "return" | ".Internal" | "&&" | "||"
+            | "repeat" | "break" | "next" | "while" | "for" | "+" | "-" | "*" | "/" | "^" | "exp"
+            | "sqrt" | "log" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!" | "$"
+            | "is.character" | "is.complex"  | "is.double" | "is.integer" | "is.logical"
+            | "is.name" | "is.null" | "is.object"  | "is.symbol" | ".Call" | ":" | "seq_along"
+            | "seq_len" | "::" | ":::" | "with" | "require" | "switch" | "=" | "<-" | "<<-" | "["
+            | "[["  => true,
             _ if MATH1_FUNCS.contains(&sym) => true,
-            _ if SAFE_BASE_INTERNALS.contains(&sym) => true,
-            _ if FORBIDDEN_INLINES.contains(&sym) => false,
             _ if self.builtins.contains(sym) => true,
             _ if self.specials.contains(sym) => true,
+            _ if SAFE_BASE_INTERNALS.contains(&sym) => true,
             _ => false,
         }
     }
@@ -2091,10 +2067,12 @@ impl<'a> Compiler<'a> {
                 SexpKind::Sym(sym) => {
                     self.cmp_sym(sym, missing_ok);
                     self.code_buffer.add_instr(BcOp::PUSHARG_OP);
+                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Lang(_) => {
                     self.cmp(&arg.data, false, true);
                     self.code_buffer.add_instr(BcOp::PUSHARG_OP);
+                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Nil => {
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
@@ -2497,17 +2475,19 @@ impl<'a> Compiler<'a> {
     }
 
     fn get_inlineinfo(&self, function: &'a str) -> Option<InlineInfo> {
-        let base_var = self.is_base_var(function);
-        if self.options.inline_level > 0 && base_var && self.has_handler(function) {
-            let info = InlineInfo {
-                guard: !(self.options.inline_level >= 3
-                    || (self.options.inline_level >= 2 && LANG_FUNCS.contains(&function))),
-                base_var,
-            };
-            Some(info)
-        } else {
-            None
+        if FORBIDDEN_INLINES.contains(&function) || self.options.inline_level == 0
+            || !self.has_handler(function) || !self.is_base_var(function) {
+            return None;
         }
+
+        Some(InlineInfo {
+            guard: !(
+                self.find_namespacebase(function).is_some()
+                || self.options.inline_level >= 3
+                || (self.options.inline_level == 2 && LANG_FUNCS.contains(&function))
+            ),
+            base_var: true,
+        })
     }
 
     fn get_assigned_var(&self, sexp: &'a Sexp<'a>) -> Option<&'a lang::Sym<'a>> {

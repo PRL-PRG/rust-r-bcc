@@ -176,7 +176,7 @@ fn bench(opt: bool, log_errors: bool) {
             } else {
                 eprintln!("fail {key}");
             }
-            if log_errors {
+            if log_errors /*|| *key == "simpleCondition"*/ {
                 eprintln!(
                     "{}",
                     prettydiff::diff_lines(&res.to_string(), &corr_closure.to_string()),
