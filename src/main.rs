@@ -7,19 +7,19 @@ use rds::{
 };
 use sexp::sexp_alloc::Alloc;
 
+use crate::misc::commands::compile_base_package;
 use crate::{
     compiler::compiler::Compiler,
     rds::RDSResult,
     server::run,
     sexp::sexp::{lang, Sexp, SexpKind},
 };
-use crate::misc::commands::{compile_base_package};
 
 mod compiler;
+mod misc;
 mod rds;
 mod server;
 mod sexp;
-mod misc;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -52,7 +52,11 @@ impl From<RDSWriterError> for MainError {
 impl<'a> RDSWriter<'a> for File {}
 
 fn bench(opt: bool, log_errors: bool) {
-    let path_env = if opt { "temp/benchenv.RDS" } else { "temp/benchenv_noopt.RDS" };
+    let path_env = if opt {
+        "temp/benchenv.RDS"
+    } else {
+        "temp/benchenv_noopt.RDS"
+    };
 
     // base environment
     compile_base_package(path_env);
@@ -141,6 +145,10 @@ fn bench(opt: bool, log_errors: bool) {
 
     let comp_start = Instant::now();
     for key in orig.hash_frame.env.keys() {
+        // if "close.srcfile" != *key {
+        //     continue;
+        // }
+
         count += 1;
         let closure = orig.hash_frame.get(&key).unwrap();
         let closure = match &closure.kind {
@@ -176,7 +184,9 @@ fn bench(opt: bool, log_errors: bool) {
             } else {
                 eprintln!("fail {key}");
             }
-            if log_errors /*|| *key == "simpleCondition"*/ {
+            if log_errors
+            /*|| *key == "simpleCondition"*/
+            {
                 eprintln!(
                     "{}",
                     prettydiff::diff_lines(&res.to_string(), &corr_closure.to_string()),

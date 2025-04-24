@@ -4,10 +4,10 @@ use crate::sexp::sexp_display::join_string;
 
 use super::bc::{Bc, BcOp, ConstPoolItem};
 
-impl<'a> Display for Bc<'a> {
+impl Display for Bc<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // instructions
-        write!(f, "instruction : \n")?;
+        writeln!(f, "instructions:")?;
         let mut index: usize = 1;
         while index < self.instructions.len() {
             let inst = self.instructions[index];
@@ -18,15 +18,14 @@ impl<'a> Display for Bc<'a> {
                 write!(f, " {val}")?;
                 index += 1;
             }
-            write!(f, "\n")?
+            writeln!(f)?
         }
 
         // const pool
-        write!(
-            f,
-            "constant pool : [{}]\n",
-            join_string(&self.constpool, ", ")
-        )?;
+        writeln!(f, "constant pool:")?;
+        for (i, c) in self.constpool.iter().enumerate() {
+            writeln!(f, "\t{i} {c}")?;
+        }
 
         Ok(())
     }

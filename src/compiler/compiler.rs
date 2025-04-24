@@ -1,7 +1,8 @@
-use std::{
-    cell::UnsafeCell,
-    collections::{HashMap, HashSet},
+use super::{
+    code_buf::{CodeBuffer, DEFLABEL},
+    compiler_context::CompilerContext,
 };
+use crate::compiler::constant_fold::ConstantFold;
 use crate::{
     compiler::code_buf::DEFLISTLABEL,
     sexp::{
@@ -10,8 +11,10 @@ use crate::{
         sexp_alloc::Alloc,
     },
 };
-use crate::compiler::constant_fold::ConstantFold;
-use super::{code_buf::{CodeBuffer, DEFLABEL}, compiler_context::CompilerContext};
+use std::{
+    cell::UnsafeCell,
+    collections::{HashMap, HashSet},
+};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -46,7 +49,7 @@ pub struct Compiler<'a> {
     arena: &'a Alloc<'a>,
 }
 
-const DEFAULT_OPTIMIZATION_LEVEL: usize = 2;
+const DEFAULT_OPTIMIZATION_LEVEL: usize = 3;
 
 const MAYBE_NSE_SYMBOLS: [&'static str; 1] = ["bquote"];
 
@@ -64,9 +67,26 @@ const MATH1_FUNCS: [&str; 24] = [
 ];
 
 const SAFE_BASE_INTERNALS: [&str; 20] = [
-    "atan2", "besselY", "beta", "choose", "drop", "inherits", "is.vector", "lbeta", "lchoose",
-    "nchar", "polyroot", "typeof", "vector", "which.max", "which.min", "is.loaded", "identical",
-    "match", "rep.int", "rep_len",
+    "atan2",
+    "besselY",
+    "beta",
+    "choose",
+    "drop",
+    "inherits",
+    "is.vector",
+    "lbeta",
+    "lchoose",
+    "nchar",
+    "polyroot",
+    "typeof",
+    "vector",
+    "which.max",
+    "which.min",
+    "is.loaded",
+    "identical",
+    "match",
+    "rep.int",
+    "rep_len",
 ];
 
 const FORBIDDEN_INLINES: [&str; 1] = ["standardGeneric"];
@@ -77,7 +97,9 @@ const MAX_CONST_SIZE: usize = 10;
 
 const ALLOWED_FOLDABLE_CONSTS: [&'static str; 3] = ["pi", "T", "F"];
 
-const ALLOWED_FOLDABLE_FUNS: [&'static str; 13] = ["c", "+", "*", "/", ":", "-", "^", "(", "log2", "log", "sqrt", "rep", "seq.int"];
+const ALLOWED_FOLDABLE_FUNS: [&'static str; 13] = [
+    "c", "+", "*", "/", ":", "-", "^", "(", "log2", "log", "sqrt", "rep", "seq.int",
+];
 
 const LOOP_STOP_FUNS: [&'static str; 4] = ["function", "for", "while", "repeat"];
 
@@ -193,7 +215,7 @@ impl<'a> Compiler<'a> {
 
         if let Some(r#const) = self.constant_fold(sexp) {
             self.cmp_const(r#const);
-        }  else {
+        } else {
             match &sexp.kind {
                 SexpKind::Sym(sym) => self.cmp_sym(sym, missing_ok),
                 SexpKind::Lang(lang) => self.cmp_call(lang, true),
@@ -265,8 +287,10 @@ impl<'a> Compiler<'a> {
         }
 
         match &call.target {
-            lang::Target::Lang(lang::Lang { target: lang::Target::Sym(fun_name), .. })
-            if LOOP_BREAK_FUNS.contains(&fun_name.data) => {
+            lang::Target::Lang(lang::Lang {
+                target: lang::Target::Sym(fun_name),
+                ..
+            }) if LOOP_BREAK_FUNS.contains(&fun_name.data) => {
                 let call_sexp = self.arena.alloc(Sexp::from(SexpKind::Lang(call.clone())));
                 self.cmp(call_sexp, false, true);
             }
@@ -1513,7 +1537,9 @@ impl<'a> Compiler<'a> {
                 true
             }
             "log" => {
-                if (expr.args.len() != 1 && expr.args.len() != 2) || self.dots_or_missing(&expr.args) {
+                if (expr.args.len() != 1 && expr.args.len() != 2)
+                    || self.dots_or_missing(&expr.args)
+                {
                     self.cmp_builtin(expr, false);
                     return true;
                 }
@@ -1537,7 +1563,6 @@ impl<'a> Compiler<'a> {
 
                     std::mem::swap(&mut self.context, &mut orig);
                 }
-
 
                 if self.context.tailcall {
                     self.code_buffer.add_instr(BcOp::RETURN_OP);
@@ -2028,12 +2053,12 @@ impl<'a> Compiler<'a> {
     fn has_handler(&self, sym: &str) -> bool {
         match sym {
             "{" | "if" | "function" | "(" | "local" | "return" | ".Internal" | "&&" | "||"
-            | "repeat" | "break" | "next" | "while" | "for" | "+" | "-" | "*" | "/" | "^" | "exp"
-            | "sqrt" | "log" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!" | "$"
-            | "is.character" | "is.complex"  | "is.double" | "is.integer" | "is.logical"
-            | "is.name" | "is.null" | "is.object"  | "is.symbol" | ".Call" | ":" | "seq_along"
-            | "seq_len" | "::" | ":::" | "with" | "require" | "switch" | "=" | "<-" | "<<-" | "["
-            | "[["  => true,
+            | "repeat" | "break" | "next" | "while" | "for" | "+" | "-" | "*" | "/" | "^"
+            | "exp" | "sqrt" | "log" | "==" | "!=" | "<" | "<=" | ">=" | ">" | "&" | "|" | "!"
+            | "$" | "is.character" | "is.complex" | "is.double" | "is.integer" | "is.logical"
+            | "is.name" | "is.null" | "is.object" | "is.symbol" | ".Call" | ":" | "seq_along"
+            | "seq_len" | "::" | ":::" | "with" | "require" | "switch" | "=" | "<-" | "<<-"
+            | "[" | "[[" => true,
             _ if MATH1_FUNCS.contains(&sym) => true,
             _ if self.builtins.contains(sym) => true,
             _ if self.specials.contains(sym) => true,
@@ -2403,7 +2428,7 @@ impl<'a> Compiler<'a> {
         // TODO
         match &sexp.kind {
             SexpKind::MissingArg => true,
-            SexpKind::Sym(sym) if sym.data == "..." =>  true,
+            SexpKind::Sym(sym) if sym.data == "..." => true,
             SexpKind::Sym(sym) if self.ddval(sym).is_some() => true,
             _ => false,
         }
@@ -2475,17 +2500,18 @@ impl<'a> Compiler<'a> {
     }
 
     fn get_inlineinfo(&self, function: &'a str) -> Option<InlineInfo> {
-        if FORBIDDEN_INLINES.contains(&function) || self.options.inline_level == 0
-            || !self.has_handler(function) || !self.is_base_var(function) {
+        if FORBIDDEN_INLINES.contains(&function)
+            || self.options.inline_level == 0
+            || !self.has_handler(function)
+            || !self.is_base_var(function)
+        {
             return None;
         }
 
         Some(InlineInfo {
-            guard: !(
-                self.find_namespacebase(function).is_some()
+            guard: !(self.find_namespacebase(function).is_some()
                 || self.options.inline_level >= 3
-                || (self.options.inline_level == 2 && LANG_FUNCS.contains(&function))
-            ),
+                || (self.options.inline_level == 2 && LANG_FUNCS.contains(&function))),
             base_var: true,
         })
     }
@@ -2596,7 +2622,9 @@ impl<'a> Compiler<'a> {
             return None;
         }
 
-        let lookup = self.find_baseenv(name).or(self.find_namespacebase(name))
+        let lookup = self
+            .find_baseenv(name)
+            .or(self.find_namespacebase(name))
             .expect("guaranteed by `self.is_base_var(name)`");
         self.check_const(lookup)
     }
@@ -2612,10 +2640,12 @@ impl<'a> Compiler<'a> {
         }
 
         if self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var) {
-            return None
+            return None;
         }
 
-        let lookup = self.find_baseenv(fun_name).or(self.find_namespacebase(fun_name))
+        let lookup = self
+            .find_baseenv(fun_name)
+            .or(self.find_namespacebase(fun_name))
             .expect("guaranteed by `self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var)`");
         if !matches!(&lookup.kind, SexpKind::Closure(_)) {
             return None;
@@ -2627,19 +2657,31 @@ impl<'a> Compiler<'a> {
     }
 
     fn build_args(&mut self, args: &'a data::List<'a>) -> Option<Vec<data::TaggedSexp<'a>>> {
-        args.iter().map(|data::TaggedSexp { tag, data: arg  }| {
-            if matches!(arg.kind, SexpKind::MissingArg) {
-                return None;
-            }
+        args.iter()
+            .map(|data::TaggedSexp { tag, data: arg }| {
+                if matches!(arg.kind, SexpKind::MissingArg) {
+                    return None;
+                }
 
-            let arg_value = self.constant_fold(arg)?;
+                let arg_value = self.constant_fold(arg)?;
 
-            if !matches!(&arg_value.kind, SexpKind::Logic(_) | SexpKind::Real(_) | SexpKind::Int(_) | SexpKind::Complex(_) | SexpKind::Str(_)) {
-                return None;
-            }
+                if !matches!(
+                    &arg_value.kind,
+                    SexpKind::Logic(_)
+                        | SexpKind::Real(_)
+                        | SexpKind::Int(_)
+                        | SexpKind::Complex(_)
+                        | SexpKind::Str(_)
+                ) {
+                    return None;
+                }
 
-            Some(data::TaggedSexp { tag: *tag, data: arg_value })
-        }).collect()
+                Some(data::TaggedSexp {
+                    tag: *tag,
+                    data: arg_value,
+                })
+            })
+            .collect()
     }
 
     fn do_constant_fold_call(
@@ -2663,7 +2705,9 @@ impl<'a> Compiler<'a> {
             "log2" if args.len() == 1 => constant_fold.log2(args[0].data),
             "sqrt" if args.len() == 1 => constant_fold.sqrt(args[0].data),
             "rep" if args.len() == 2 => constant_fold.rep(args[0].data, args[1].data),
-            "seq.int" if args.len() == 3 => constant_fold.seq_int(args[0].data, args[1].data, args[2].data),
+            "seq.int" if args.len() == 3 => {
+                constant_fold.seq_int(args[0].data, args[1].data, args[2].data)
+            }
             _ => None,
         }
     }
@@ -2675,7 +2719,9 @@ pub struct CompilerOptions {
 
 impl Default for CompilerOptions {
     fn default() -> Self {
-        Self { inline_level: DEFAULT_OPTIMIZATION_LEVEL }
+        Self {
+            inline_level: DEFAULT_OPTIMIZATION_LEVEL,
+        }
     }
 }
 
@@ -2689,12 +2735,12 @@ impl CompilerOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::misc::commands::{create_testdata, write_baseenv};
+    use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
     use bumpalo::Bump;
     use std::cell::UnsafeCell;
     use std::io::{BufWriter, Read, Write};
     use std::sync::Once;
-    use crate::misc::commands::{create_testdata, write_baseenv};
-    use crate::rds::{rds_reader::RDSReader, rds_writer::RDSWriter, RDSResult};
 
     macro_rules! test_fun_noopt {
         ( $name:ident, $code:expr) => {
