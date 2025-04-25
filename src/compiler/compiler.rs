@@ -1164,6 +1164,32 @@ impl<'a> Compiler<'a> {
                 let then_block = &expr.args[1].data;
                 let else_block = expr.args.get(2).map(|x| &x.data);
 
+                // Constant fold condition
+                if let Some(const_cond) = self
+                    .constant_fold(cond)
+                    .and_then(|cond| match cond.kind {
+                        SexpKind::Logic([l]) => Some(*l),
+                        _ => None,
+                    })
+                {
+                    match (const_cond, else_block) {
+                        (data::Logic::True, _) => {
+                            self.cmp(then_block, false, true);
+                        }
+                        (data::Logic::False, Some(else_block)) => {
+                            self.cmp(else_block, false, true);
+                        }
+                        _ => {
+                            self.code_buffer.add_instr(BcOp::LDNULL_OP);
+                            if self.context.tailcall {
+                                self.code_buffer.add_instr(BcOp::INVISIBLE_OP);
+                                self.code_buffer.add_instr(BcOp::RETURN_OP);
+                            }
+                        }
+                    }
+                    return true;
+                }
+
                 // condition is compiled without tailcall
                 let tailcall = self.context.tailcall;
                 self.context.tailcall = false;
@@ -2048,11 +2074,18 @@ impl<'a> Compiler<'a> {
         let mut orig_context = std::mem::replace(&mut self.context, tmp);
 
         for arg in args {
-            match &arg.data.kind {
+            let mut arg_value = arg.data;
+            // Only constant-folds symbols.
+            if matches!(arg_value.kind, SexpKind::Sym(_)) {
+                if let Some(const_arg) = self.constant_fold(arg_value) {
+                    arg_value = const_arg;
+                }
+            }
+
+            match &arg_value.kind {
                 SexpKind::MissingArg => {
                     if missing_ok {
                         self.code_buffer.add_instr(BcOp::DOMISSING_OP);
-                        self.cmp_tag(&arg.tag);
                     } else {
                         todo!()
                     }
@@ -2067,35 +2100,30 @@ impl<'a> Compiler<'a> {
                 SexpKind::Sym(sym) => {
                     self.cmp_sym(sym, missing_ok);
                     self.code_buffer.add_instr(BcOp::PUSHARG_OP);
-                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Lang(_) => {
-                    self.cmp(&arg.data, false, true);
+                    self.cmp(arg_value, false, true);
                     self.code_buffer.add_instr(BcOp::PUSHARG_OP);
-                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Nil => {
                     self.code_buffer.add_instr(BcOp::PUSHNULLARG_OP);
-                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Logic(logs)
                     if logs.len() == 1 && matches!(logs[0], data::Logic::True) =>
                 {
                     self.code_buffer.add_instr(BcOp::PUSHTRUEARG_OP);
-                    self.cmp_tag(&arg.tag);
                 }
                 SexpKind::Logic(logs)
                     if logs.len() == 1 && matches!(logs[0], data::Logic::False) =>
                 {
                     self.code_buffer.add_instr(BcOp::PUSHFALSEARG_OP);
-                    self.cmp_tag(&arg.tag);
                 }
                 _ => {
-                    let index = self.code_buffer.add_const(arg.data.into());
+                    let index = self.code_buffer.add_const(arg_value.into());
                     self.code_buffer.add_instr2(BcOp::PUSHCONSTARG_OP, index);
-                    self.cmp_tag(&arg.tag);
                 }
             }
+            self.cmp_tag(&arg.tag);
         }
 
         std::mem::swap(&mut self.context, &mut orig_context);
@@ -2611,7 +2639,7 @@ impl<'a> Compiler<'a> {
             return None;
         }
 
-        if self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var) {
+        if self.get_inlineinfo(fun_name).is_none_or(|i| !i.base_var || i.guard) {
             return None
         }
 
@@ -2649,7 +2677,9 @@ impl<'a> Compiler<'a> {
     ) -> Option<&'a Sexp<'a>> {
         let constant_fold = ConstantFold::new(self.arena);
         match fun_name {
-            "(" if args.len() == 1 => constant_fold.paren(args[0].data),
+            "(" if args.len() == 1 => constant_fold.paren(args[0].data)
+                // This one recurses for some reason.
+                .and_then(|a| self.constant_fold(a)),
             "c" => constant_fold.c(&args),
             "+" if args.len() == 1 => constant_fold.plus(args[0].data),
             "+" if args.len() == 2 => constant_fold.add(args[0].data, args[1].data),
