@@ -275,6 +275,7 @@ impl From<&Sexp<'_>> for Flag {
             SexpKind::Buildin(_) => sexptype::BUILTINSXP,
             SexpKind::NAString => sexptype::CHARSXP,
             SexpKind::UnboundVal => sexptype::UNBOUNDVALUE_SXP,
+            SexpKind::Extptr { .. } => sexptype::EXTPTRSXP,
         };
 
         let str_fmt = match value.kind {

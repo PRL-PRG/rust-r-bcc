@@ -1,5 +1,5 @@
 use std::{cell::UnsafeCell, collections::HashSet, env, fs::File, time::Instant};
-
+use std::path::Path;
 use bumpalo::Bump;
 use rds::{
     rds_reader::{RDSReader, RDSReaderError},
@@ -13,7 +13,7 @@ use crate::{
     server::run,
     sexp::sexp::{lang, Sexp, SexpKind},
 };
-use crate::misc::commands::{compile_base_package};
+use crate::misc::commands::{create_bench_envs};
 
 mod compiler;
 mod rds;
@@ -51,15 +51,16 @@ impl From<RDSWriterError> for MainError {
 //impl<'a> RDSReader<'a> for File {}
 impl<'a> RDSWriter<'a> for File {}
 
-fn bench(opt: bool, log_errors: bool) {
-    let path_env = if opt { "temp/benchenv.RDS" } else { "temp/benchenv_noopt.RDS" };
+fn bench(opt: bool, check: bool, log_errors: bool) {
+    assert!(!check || (opt && !log_errors), "invalid combination of options");
 
-    // base environment
-    compile_base_package(path_env);
+    let path_env = if opt { "temp/benchenv.RDS" } else { "temp/benchenv_noopt.RDS" };
+    if check || !Path::new(path_env).exists() {
+        create_bench_envs(path_env);
+    }
 
     let arena = Bump::new();
     let arena = Alloc::new(&arena);
-    let full_start = Instant::now();
     let file = std::fs::File::open(path_env).unwrap();
     let file = RDSReader::new(UnsafeCell::new(file), &arena);
     let RDSResult {
@@ -152,49 +153,50 @@ fn bench(opt: bool, log_errors: bool) {
             }
         };
         let res = compiler.cmpfun(closure);
-        let corr_closure = cmp.hash_frame.get(&key).unwrap();
-        let corr_closure = match &corr_closure.kind {
-            SexpKind::Closure(closure) => closure,
-            SexpKind::Nil => panic!(),
-            _ => {
-                println!("{closure}");
-                panic!()
-            }
-        };
 
-        if &res == corr_closure {
-            correct += 1;
-            correct_except_cp += 1;
-        } else {
-            if matches!(
-                (&res.body.kind, &corr_closure.body.kind),
-                (SexpKind::Bc(mine), SexpKind::Bc(corr))
-                if mine.instructions == corr.instructions
-            ) {
+        if check {
+            let corr_closure = cmp.hash_frame.get(&key).unwrap();
+            let corr_closure = match &corr_closure.kind {
+                SexpKind::Closure(closure) => closure,
+                SexpKind::Nil => panic!(),
+                _ => {
+                    println!("{closure}");
+                    panic!()
+                }
+            };
+
+            if &res == corr_closure {
+                correct += 1;
                 correct_except_cp += 1;
-                eprintln!("fail {key} (only constants)");
             } else {
-                eprintln!("fail {key}");
-            }
-            if log_errors /*|| *key == "simpleCondition"*/ {
-                eprintln!(
-                    "{}",
-                    prettydiff::diff_lines(&res.to_string(), &corr_closure.to_string()),
-                );
+                if matches!(
+                    (&res.body.kind, &corr_closure.body.kind),
+                    (SexpKind::Bc(mine), SexpKind::Bc(corr))
+                    if mine.instructions == corr.instructions
+                ) {
+                    correct_except_cp += 1;
+                    eprintln!("fail {key} (only constants)");
+                } else {
+                    eprintln!("fail {key}");
+                }
+                if log_errors /*|| *key == "simpleCondition"*/ {
+                    eprintln!(
+                        "{}",
+                        prettydiff::diff_lines(&res.to_string(), &corr_closure.to_string()),
+                    );
+                }
             }
         }
     }
 
-    assert_eq!(count, all);
-    eprintln!("{correct_except_cp} / {all} (ignoring constant pool)");
-    eprintln!("{correct} / {all}");
-    println!(
-        "{} {} {} {}",
-        full_start.elapsed().as_secs_f32(),
-        full_start.elapsed().as_millis(),
-        comp_start.elapsed().as_secs_f64(),
-        comp_start.elapsed().as_millis()
-    );
+    if check {
+        assert_eq!(count, all);
+        eprintln!("{correct_except_cp} / {all} (ignoring constant pool)");
+        eprintln!("{correct} / {all}");
+    } else {
+        eprintln!("Total: {count}")
+    }
+    println!("{}", comp_start.elapsed().as_secs_f64());
 }
 
 fn main() -> Result<(), MainError> {
@@ -205,8 +207,9 @@ fn main() -> Result<(), MainError> {
     }
     if args.len() == 2 && args[1] == "-b" {
         let opt = !env::var("NOOPT").is_ok_and(|v| v == "1" || v == "true");
+        let check = !env::var("NOCHECK").is_ok_and(|v| v == "1" || v == "true");
         let log_errors = env::var("LOG_ERRORS").is_ok_and(|v| v == "1" || v == "true");
-        bench(opt, log_errors);
+        bench(opt, check, log_errors);
         return Ok(());
     }
     if args.len() != 3 {

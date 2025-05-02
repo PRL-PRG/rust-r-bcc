@@ -220,7 +220,7 @@ where
             sexptype::CPLXSXP => self.read_cplsxp()?,
             sexptype::NAMESPACESXP => self.read_namespace(refs)?,
             sexptype::UNBOUNDVALUE_SXP => self.arena.unbound,
-            //sexptype::EXTPTRSXP => self.chain
+            sexptype::EXTPTRSXP => self.read_extptrsxp(refs)?,
             //sexptype::BASENAMESPACE_SXP => SexpKind::BaseNamespace.into(),
             x => {
                 println!("{x}");
@@ -513,6 +513,12 @@ where
                 }
                 sexptype::LANGSXP => {
                     lang::Target::Lang(self.arena.alloc(self.read_langsxp(refs, flag)?))
+                }
+                sexptype::CLOSXP => {
+                    // TODO this happens for some reason, I'm pretty sure it also happened when I
+                    //  wrote the RDS reader in C++.
+                    let _ = self.read_closxp(refs, flag)?;
+                    lang::Target::Sym(lang::Sym::new("why is this a closure?"))
                 }
                 x => {
                     return Err(RDSReaderError::DataError(format!(
@@ -974,6 +980,7 @@ where
                     | sexptype::BASEENV_SXP
                     | sexptype::BASENAMESPACE_SXP
                     | sexptype::GLOBALENV_SXP
+                    | sexptype::REFSXP
             ) {
                 return Err(RDSReaderError::DataError("Expected environment".into()));
             }
@@ -991,5 +998,16 @@ where
             expr,
         };
         Ok(self.arena.alloc(result.into()))
+    }
+    
+    fn read_extptrsxp(
+        &self,
+        refs: &RefsTableReader<'a>,
+    ) -> Result<&'a Sexp<'a>, RDSReaderError> {
+        let prot = self.read_item(refs)?;
+        let tag = self.read_item(refs)?;
+        let extptr = self.arena.alloc(SexpKind::Extptr { prot, tag }.into());
+        refs.add_ref(extptr);
+        Ok(extptr)
     }
 }

@@ -28,27 +28,26 @@ base_env$F <- F
 
 saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
-orig <- sapply(basevars[types == "closure"], \(x) {
-    tryCatch(eval(parse(text=deparse(get(x)))[[1]]), error = function(e) {
-        NULL
-    })
+pkgs <- c("base", "utils", "compiler")
+orig <- do.call(c, sapply(pkgs, \(name) {
+    namespace <- getNamespace(name)
+    names <- ls(namespace, all.names = TRUE)
+    vars <- sapply(names, \(n) get(n, envir=namespace))
+    funs <- Filter(\(v) typeof(v) == "closure" && identical(environment(v), namespace), vars)
+    sapply(funs, \(f) tryCatch(eval(parse(text=deparse(f))[[1]]), error = \(e) NULL))
+}))
+compiled_no_opt <- sapply(orig, \(f) {
+    tryCatch(compiler::cmpfun(f, options=list(optimize=0)), error = \(e) NULL)
 })
-compiled_no_opt <- sapply(basevars[types == "closure"], \(x) {
-    tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]]), options=list(optimize=0)), error = function(e) {
-        NULL
-    })
-})
-compiled <- sapply(basevars[types == "closure"], \(x) {
-    tryCatch(compiler::cmpfun(eval(parse(text=deparse(get(x)))[[1]])), error = function(e) {
-        NULL
-    })
+compiled <- sapply(orig, \(f) {
+    tryCatch(compiler::cmpfun(f), error = \(e) NULL)
 })
 
-compiled_env <- as.environment(compiled)
-compiled_env_no_opt <- as.environment(compiled_no_opt)
 orig <- as.environment(orig)
+compiled <- as.environment(compiled)
+compiled_no_opt <- as.environment(compiled_no_opt)
 
-saveRDS(compiled_env, paste(cargs[[1]], "cmp", sep="."), version = 2, compress=FALSE)
-saveRDS(compiled_env_no_opt, paste(cargs[[1]], "cmp_no_opt", sep="."), version = 2, compress=FALSE)
+saveRDS(compiled, paste(cargs[[1]], "cmp", sep="."), version = 2, compress=FALSE)
+saveRDS(compiled_no_opt, paste(cargs[[1]], "cmp_no_opt", sep="."), version = 2, compress=FALSE)
 saveRDS(orig, paste(cargs[[1]], "orig", sep="."), version = 2, compress=FALSE)
 

@@ -788,4 +788,9 @@ pub enum SexpKind<'a> {
     UnboundVal,
 
     BaseNamespace, // as in GnuR fake namespace
+
+    Extptr {
+        prot: &'a Sexp<'a>,
+        tag: &'a Sexp<'a>,
+    },
 }

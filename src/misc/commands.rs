@@ -2,8 +2,8 @@ use std::process::Output;
 use std::sync::LazyLock;
 use lazy_format::lazy_format;
 
-pub fn compile_base_package(path_env: &str) {
-    run_r_script("compile_base_package", &[path_env]);
+pub fn create_bench_envs(path_env: &str) {
+    run_r_script("create_bench_envs", &[path_env]);
 }
 
 #[cfg(test)]

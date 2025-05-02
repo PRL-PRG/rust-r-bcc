@@ -73,6 +73,7 @@ impl Display for SexpKind<'_> {
             SexpKind::Buildin(sym) => write!(f, "{sym}"),
             SexpKind::NAString => write!(f, "NASTRING"),
             SexpKind::UnboundVal => write!(f, "UNBOUND"),
+            SexpKind::Extptr { prot, tag } => write!(f, "extptr: {prot}, {tag}"),
         }
     }
 }

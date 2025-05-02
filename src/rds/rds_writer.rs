@@ -216,6 +216,12 @@ pub trait RDSWriter<'a>: Write {
             }
             SexpKind::NAString => self.write_int(-1),
             SexpKind::UnboundVal => Ok(()),
+            SexpKind::Extptr { prot, tag } => {
+                refs.add_ref(sexp);
+                self.write_int(super::sexptype::EXTPTRSXP as i32)?;
+                self.write_item(prot, refs, arena)?;
+                self.write_item(tag, refs, arena)
+            }
         }?;
         if flag.has_attributes
             && flag.sexp_type != super::sexptype::REFSXP

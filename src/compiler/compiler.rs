@@ -2583,8 +2583,10 @@ impl<'a> Compiler<'a> {
                 _ => (),
             },
             "function" => (),
-            "~" => todo!(),
-            "local" => todo!(),
+            // TODO
+            "~" => (),
+            // TODO
+            "local" => (),
             "expression" | "quote" => (),
             _ => (),
         }
