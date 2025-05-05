@@ -7,7 +7,7 @@ done
 
 echo "Running the Java implementation"
 for i in {1..10}; do
-    (cd "/Users/jakobeha/Documents/grad/research/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> javatimings.csv
+    (cd "/home/jakob/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> javatimings.csv
 done
 
 echo "Running the Rust implementation"
