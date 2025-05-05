@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="/javatimings.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="/mytimings.csv">
           <value>
             <Attribute>
@@ -17,7 +24,7 @@
             </Attribute>
           </value>
         </entry>
-        <entry key="/server/javatimings.csv">
+        <entry key="/timings.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
