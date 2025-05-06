@@ -6,18 +6,27 @@ ITERATIONS=${1:-10}
 echo "Running $ITERATIONS iterations of the benchmarks"
 
 echo "Running the R implementation"
+echo "r" > r-timings.csv
 for i in $(seq 1 $ITERATIONS); do
-    scripts/bench.R 2>/dev/null >> origtimings.csv
+    echo "- R $i"
+    scripts/bench.R 2>/dev/null >> r-timings.csv
 done
+
 
 echo "Running the Java implementation"
 JAVA_SERVER_PATH=${JAVA_SERVER_PATH:-"/Users/jakobeha/Documents/grad/research"}
+echo "java" > java-timings.csv
 for i in $(seq 1 $ITERATIONS); do
-    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> javatimings.csv
+echo "- Java $i"
+    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> java-timings.csv
 done
+
 
 echo "Running the Rust implementation"
-for i in $(seq 1 $ITERATIONS); do
-    NOCHECK=1 cargo run --quiet --release --package test_build --bin test_build -- -b 2>/dev/null >> rusttimings.csv
+echo "rust" > rust-timings.csv
+for i in {1..10}; do
+    echo "- Rust $i"
+    NOCHECK=1 cargo run --quiet --release --package test_build --bin test_build -- -b >> rust-timings.csv
 done
 
+paste -d ',' r-timings.csv java-timings.csv rust-timings.csv > timings.csv

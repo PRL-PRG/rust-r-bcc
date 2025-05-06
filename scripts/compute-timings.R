@@ -22,9 +22,9 @@ if (!dir.exists(folder)) {
 }
  
 # Read the timing files 
-java <- read_numbers_to_tibble(file.path(folder, "javatimings.csv"), "java")
-r <- read_numbers_to_tibble(file.path(folder, "origtimings.csv"), "r")
-rust <- read_numbers_to_tibble(file.path(folder, "rusttimings.csv"), "rust")
+java <- read_csv(file.path(folder, "java-timings.csv"))
+r <- read_csv(file.path(folder, "r-timings.csv"))
+rust <- read_csv(file.path(folder, "rust-timings.csv"))
 
 # Combine the data into a single tibble
 timings <- java %>%
