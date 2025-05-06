@@ -873,6 +873,8 @@ where
         let cdr = match cdr.kind {
             SexpKind::Nil => Ok(self.arena.nil_list),
             SexpKind::List(cdr) => Ok(cdr),
+            // This happens for some reason.
+            SexpKind::Lang(cdr) => Ok(cdr.args),
             _ => Err(RDSReaderError::DataError(format!(
                 "Wrong cdr type in bc lang read {type_val}"
             ))),

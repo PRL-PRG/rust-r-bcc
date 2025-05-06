@@ -466,7 +466,7 @@ pub mod lang {
 
     use crate::sexp::{bc::ConstPoolItem, sexp_alloc::Alloc};
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub struct Sym<'a> {
         pub(crate) data: &'a str,
     }
@@ -489,7 +489,7 @@ pub mod lang {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub enum Target<'a> {
         Lang(&'a Lang<'a>), // expression
         Sym(Sym<'a>),       // named
@@ -517,7 +517,7 @@ pub mod lang {
         }
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     pub struct Lang<'a> {
         pub(crate) target: Target<'a>,
         pub(crate) args: super::data::List<'a>,
