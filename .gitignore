@@ -3,3 +3,4 @@
 /mutants.out*
 /temp/*
 !/temp/.gitkeep
+*timings.csv

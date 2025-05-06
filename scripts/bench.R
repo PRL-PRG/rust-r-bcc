@@ -11,5 +11,5 @@ orig <- do.call(c, sapply(pkgs, \(name) {
 start_time = Sys.time();
 x <- sapply(orig, \(x) tryCatch(compiler::cmpfun(x), error=function(e) NULL));
 end_time = Sys.time();
-cat("Total: ", length(orig), "\n", file = stderr())
-cat(as.double(end_time - start_time, units = "secs"), "\n")
+cat("Total: ", length(orig), "\n", sep = "", file = stderr())
+cat(as.double(end_time - start_time, units = "secs"), "\n", sep = "")

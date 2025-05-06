@@ -1,18 +1,25 @@
 #!/bin/bash
 
 echo "Running the R implementation"
+echo "R\n" > r-timings.csv
 for i in {1..10}; do
-    scripts/bench.R 2>/dev/null >> origtimings.csv
+    echo "- R $i"
+    scripts/bench.R >> r-timings.csv
 done
 
 echo "Running the Java implementation"
+echo "Java\n" > java-timings.csv
 JAVA_SERVER_PATH=${JAVA_SERVER_PATH:-"/Users/jakobeha/Documents/grad/research"}
 for i in {1..10}; do
-    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> javatimings.csv
+    echo "- Java $i"
+    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) >> java-timings.csv
 done
 
 echo "Running the Rust implementation"
+echo "Rust\n" > rust-timings.csv
 for i in {1..10}; do
-    NOCHECK=1 cargo run --quiet --release --package test_build --bin test_build -- -b 2>/dev/null >> mytimings.csv
+    echo "- Rust $i"
+    NOCHECK=1 cargo run --quiet --release --package test_build --bin test_build -- -b >> rust-timings.csv
 done
 
+paste -d ',' r-timings.csv java-timings.csv rust-timings.csv > timings.csv
