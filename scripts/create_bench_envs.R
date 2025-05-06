@@ -28,7 +28,7 @@ base_env$F <- F
 
 saveRDS(base_env, cargs[[1]], version = 2, compress=FALSE)
 
-pkgs <- c("base", "utils", "compiler")
+pkgs <- c("base", "utils", "compiler", "tools", "stats")
 orig <- do.call(c, sapply(pkgs, \(name) {
     namespace <- getNamespace(name)
     names <- ls(namespace, all.names = TRUE)

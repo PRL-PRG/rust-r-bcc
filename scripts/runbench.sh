@@ -9,7 +9,7 @@ echo "Running the R implementation"
 echo "r" > r-timings.csv
 for i in $(seq 1 $ITERATIONS); do
     echo "- R $i"
-    scripts/bench.R 2>/dev/null >> r-timings.csv
+    scripts/bench.R >> r-timings.csv
 done
 
 
@@ -18,7 +18,7 @@ JAVA_SERVER_PATH=${JAVA_SERVER_PATH:-"/Users/jakobeha/Documents/grad/research"}
 echo "java" > java-timings.csv
 for i in $(seq 1 $ITERATIONS); do
 echo "- Java $i"
-    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) 2>/dev/null >> java-timings.csv
+    (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) >> java-timings.csv
 done
 
 
@@ -30,3 +30,5 @@ for i in {1..10}; do
 done
 
 paste -d ',' r-timings.csv java-timings.csv rust-timings.csv > timings.csv
+
+./scripts/compute-timings.R .

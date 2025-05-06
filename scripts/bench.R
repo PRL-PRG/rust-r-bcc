@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-pkgs <- c("base", "utils", "compiler")
+pkgs <- c("base", "utils", "compiler", "tools", "stats")
 orig <- do.call(c, sapply(pkgs, \(name) {
     namespace <- getNamespace(name)
     names <- ls(namespace, all.names = TRUE)
