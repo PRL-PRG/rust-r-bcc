@@ -1,5 +1,5 @@
 #!/usr/bin/Rscript
-basevars <- ls("package:base", all.names = TRUE)
+basevars <- ls("package:utils", all.names = TRUE)
 types <- sapply(basevars, \(x) typeof(get(x)))
 
 orig <- sapply(basevars[types == "closure"], \(x) {
