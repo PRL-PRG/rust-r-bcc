@@ -17,14 +17,14 @@ echo "Running the Java implementation"
 JAVA_SERVER_PATH=${JAVA_SERVER_PATH:-"/Users/jakobeha/Documents/grad/research"}
 echo "java" > java-timings.csv
 for i in $(seq 1 $ITERATIONS); do
-echo "- Java $i"
+    echo "- Java $i"
     (cd "$JAVA_SERVER_PATH/r-compile-server/server" && mvn test -q -Dtest=BCCompilerBenchmarkTest#testBenchmark) >> java-timings.csv
 done
 
 
 echo "Running the Rust implementation"
 echo "rust" > rust-timings.csv
-for i in {1..10}; do
+for i in $(seq 1 $ITERATIONS) do
     echo "- Rust $i"
     NOCHECK=1 cargo run --quiet --release --package test_build --bin test_build -- -b >> rust-timings.csv
 done
